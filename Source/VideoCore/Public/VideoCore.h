@@ -1,7 +1,7 @@
 //
-// <#Module Name#>.h
+// VideoCore.h
 //
-//  Generated on <#generation date#>
+//  Generated on June 24 2020
 //  Template created by Peter Gusev on 27 January 2020.
 //  Copyright 2013-2019 Regents of the University of California
 //
@@ -33,7 +33,7 @@
 #include "Modules/ModuleManager.h"
 #include "DDBase.h"
 
-class F<#Module Name#>Module : public FDDBaseModule
+class FVideoCoreModule : public FDDBaseModule
 {
 public:
 

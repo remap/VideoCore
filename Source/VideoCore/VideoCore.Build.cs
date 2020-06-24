@@ -1,16 +1,16 @@
 //
-// <#Module Name#>Test.Build.cs
+// VideoCore.Build.cs
 //
-//  Generated on <#generation date#>
+//  Generated on June 24 2020
 //  Template created by Peter Gusev on 27 January 2020.
 //  Copyright 2013-2019 Regents of the University of California
 //
 
 using UnrealBuildTool;
 
-public class <#Module Name#>Test : ModuleRules
+public class VideoCore : ModuleRules
 {
-	public <#Module Name#>Test(ReadOnlyTargetRules Target) : base(Target)
+	public VideoCore(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -33,7 +33,6 @@ public class <#Module Name#>Test : ModuleRules
 			{
 				"Core",
 				"UMG",
-				"<#Module Name#>",
 				"DDBase",
 				"DDLog"
 				// ... add other public dependencies that you statically link with here ...
@@ -48,7 +47,7 @@ public class <#Module Name#>Test : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"deps<#Module Name#>"
+				"depsVideoCore"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
