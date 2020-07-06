@@ -16,8 +16,14 @@ public:
 	ASaveDataManager();
 
 protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+// Called when the game starts or when spawned
+    virtual void BeginPlay() override;
+
+    UPROPERTY(EditAnywhere,BlueprintReadWrite)
+    TArray<FTransform> recordedTransforms;
+
+    UFUNCTION(BlueprintCallable, Category = SaveLoad)
+    bool SaveData();
 
 public:	
 	// Called every frame

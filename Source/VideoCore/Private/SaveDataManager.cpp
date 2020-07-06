@@ -25,3 +25,17 @@ void ASaveDataManager::Tick(float DeltaTime)
 
 }
 
+bool ASaveDataManager::SaveData()
+{
+    FString FilePath = TEXT("/Users/remap/Desktop/SaveTransforms.txt");//FPaths::ConvertRelativePathToFull(FPaths::GameSavedDir()) + TEXT("/TextFileTest.txt");
+    FString FileContent = TEXT("");
+    for (auto Item : recordedTransforms)
+    {
+        FileContent += Item.ToString() + TEXT("\n");
+    }
+    FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
+
+ 
+    return true;
+}
+
