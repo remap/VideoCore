@@ -21,9 +21,14 @@ protected:
 
     UPROPERTY(EditAnywhere,BlueprintReadWrite)
     TArray<FTransform> recordedTransforms;
+    
+    UPROPERTY(EditAnywhere,BlueprintReadWrite)
+    TArray<float> recordedTimes;
+    
 
     UFUNCTION(BlueprintCallable, Category = SaveLoad)
     bool SaveData();
+    
 
 public:	
 	// Called every frame

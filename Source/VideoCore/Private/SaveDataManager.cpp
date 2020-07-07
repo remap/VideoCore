@@ -2,7 +2,7 @@
 
 
 #include "SaveDataManager.h"
-
+#define SAVEDATAFILENAME "/Users/Remap/Desktop/sequence/"
 // Sets default values
 ASaveDataManager::ASaveDataManager()
 {
@@ -34,8 +34,14 @@ bool ASaveDataManager::SaveData()
         FileContent += Item.ToString() + TEXT("\n");
     }
     FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
-
+    //now timesteps
+    FilePath = TEXT("/Users/remap/Desktop/SaveTimes.txt");
+    FileContent = TEXT("");
+    for (auto Item : recordedTimes)
+    {
+        FileContent += FString::SanitizeFloat(Item) + TEXT("\n");
+    }
+    FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
  
     return true;
 }
-
