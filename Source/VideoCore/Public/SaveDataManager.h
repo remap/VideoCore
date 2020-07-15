@@ -23,11 +23,17 @@ protected:
     TArray<FTransform> recordedTransforms;
     
     UPROPERTY(EditAnywhere,BlueprintReadWrite)
-    TArray<float> recordedTimes;
+    TMap<int, FVector4> cropPoints; // key: Num of Camera Plane, Value: (x1,y1,x2,y2)
+    
+    UPROPERTY(EditAnywhere,BlueprintReadWrite)
+    FString SaveDir; // key: Num of Camera Plane, Value: (x1,y1,x2,y2)
     
 
     UFUNCTION(BlueprintCallable, Category = SaveLoad)
     bool SaveData();
+    
+    UFUNCTION(BlueprintCallable, Category = SaveLoad)
+    bool SavePoints();
     
 
 public:	

@@ -27,7 +27,12 @@ void ASaveDataManager::Tick(float DeltaTime)
 
 bool ASaveDataManager::SaveData()
 {
-    FString FilePath = TEXT("/Users/remap/Desktop/SaveTransforms.txt");//FPaths::ConvertRelativePathToFull(FPaths::GameSavedDir()) + TEXT("/TextFileTest.txt");
+    SaveDir = SaveDir.TrimStartAndEnd();
+    if (!SaveDir.EndsWith(FString("/")) or !SaveDir.EndsWith(FString("\\")))
+    {
+        SaveDir = SaveDir.Append(FString("/"));
+    }
+    FString FilePath = SaveDir  + FString("Python/RecordedTransforms.txt");
     FString FileContent = TEXT("");
     for (auto Item : recordedTransforms)
     {
@@ -35,13 +40,35 @@ bool ASaveDataManager::SaveData()
     }
     FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
     //now timesteps
-    FilePath = TEXT("/Users/remap/Desktop/SaveTimes.txt");
-    FileContent = TEXT("");
-    for (auto Item : recordedTimes)
-    {
-        FileContent += FString::SanitizeFloat(Item) + TEXT("\n");
-    }
-    FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
+//    FilePath = TEXT("/Users/remap/Desktop/SaveTimes.txt");
+//    FileContent = TEXT("");
+//    for (auto Item : cropPoints)
+//    {
+//        FileContent += FString::SanitizeFloat(Item) + TEXT("\n");
+//    }
+//    FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), EFileWrite::FILEWRITE_Append);
  
+    return true;
+}
+
+bool ASaveDataManager::SavePoints()
+{
+    SaveDir = SaveDir.TrimStartAndEnd();
+    // do some sanity checks here
+    if (!SaveDir.EndsWith(FString("/")) or !SaveDir.EndsWith(FString("\\")))
+    {
+        SaveDir = SaveDir.Append(FString("/"));
+    }
+    FString FilePath = SaveDir;
+    FString FileContent = TEXT("");
+    
+    for (auto& Item : cropPoints)
+    {
+        FilePath = SaveDir + FString("Python/Crop_") + FString::FromInt(Item.Key) + FString(".txt");
+        FVector4 points = Item.Value;
+        FileContent += FString::SanitizeFloat(points.X) + FString(" ") + FString::SanitizeFloat(points.Y) + FString(" ") + FString::SanitizeFloat(points.Z) + FString(" ") + FString::SanitizeFloat(points.W);
+    }
+    FFileHelper::SaveStringToFile(FileContent, *FilePath, FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get());
+    
     return true;
 }
