@@ -38,7 +38,7 @@
 			"cd \"$(PluginDir)\" && echo \"#define GIT_DESCRIBE ${GIT_DESCRIBE}\" > Source/VideoCore/Private/git-describe.h"
 		],
 		"Win64": [
-			"cd $(PluginDir) && git describe --always --dirty > git-describe.tmp && set /p GIT_DESCRIBE= < git-describe.tmp",
+			"cd /d $(PluginDir) && git describe --always --dirty > git-describe.tmp && set /p GIT_DESCRIBE= < git-describe.tmp",
 			"echo #define GIT_DESCRIBE %GIT_DESCRIBE% > Source/VideoCore/Private/git-describe.h",
 			"del git-describe.tmp"
 		]
