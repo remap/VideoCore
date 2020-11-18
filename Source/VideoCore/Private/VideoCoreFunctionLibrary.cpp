@@ -17,7 +17,7 @@ TArray<uint8> UVideoCoreFunctionLibrary::ToBytesArray(const FPlaneData& d)
     binArchive << pData.isAutoRotate_;
     binArchive << pData.textureCrop_;
 
-    return binArchive;
+    return TArray<uint8>(binArchive);
 }
 
 FPlaneData UVideoCoreFunctionLibrary::FromBytesArray(const TArray<uint8>& d, int &offset)
