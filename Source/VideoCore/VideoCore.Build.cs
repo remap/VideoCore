@@ -34,7 +34,8 @@ public class VideoCore : ModuleRules
 				"Core",
 				"UMG",
 				"DDBase",
-				"DDLog"
+				"DDLog",
+				"NDIIO"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
