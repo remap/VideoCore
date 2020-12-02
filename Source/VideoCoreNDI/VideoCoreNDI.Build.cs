@@ -33,6 +33,7 @@ public class VideoCoreNDI : ModuleRules
 			{
 				"Core",
 				"UMG",
+				"VideoCore",
 				"DDBase",
 				"DDLog",
 				"NDIIO"
