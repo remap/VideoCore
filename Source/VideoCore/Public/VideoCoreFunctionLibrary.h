@@ -5,9 +5,6 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 
-#include <Structures/NDIConnectionInformation.h>
-#include <Objects/Media/NDIMediaTexture2D.h>
-
 #include "VideoCoreFunctionLibrary.generated.h"
 
 USTRUCT(Blueprintable)
@@ -28,19 +25,6 @@ struct FPlaneData {
 
     UPROPERTY(BlueprintReadWrite)
         FTwoVectors textureCrop_;
-};
-
-UCLASS(ClassGroup = (VideoCoreUI), Blueprintable, meta = (BlueprintSpawnableComponent))
-class VIDEOCORE_API UNdiSourceListItem : public UObject {
-    GENERATED_BODY()
-public:
-    UPROPERTY(BlueprintReadWrite)
-    FNDIConnectionInformation ndiSourceInfo_;
-};
-
-UCLASS(ClassGroup = (VideoCoreUI), Blueprintable, HideDropdown, HideCategories = (ImportSettings, Compression, Texture, Adjustments, Compositing, LevelOfDetail, Object), meta = (BlueprintSpawnableComponent, DisplayName = "VideoCore NDI Media Texture 2D"))
-class VIDEOCORE_API UVideoCoreNdiMediaTexture : public UNDIMediaTexture2D {
-    GENERATED_BODY()
 };
 
 /**

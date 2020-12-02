@@ -19,12 +19,20 @@
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
-				"Mac",
 				"Win64",
+                "Mac",
 				"IOS",
 				"Android"
 			]
-		}
+		},
+        {
+            "Name": "VideoCoreNDI",
+            "Type": "Runtime",
+            "LoadingPhase": "Default",
+            "WhitelistPlatforms": [
+                "Win64"
+            ]
+        }
 	],
 	"Plugins" : [
 		{
