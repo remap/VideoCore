@@ -47,6 +47,7 @@ public class VideoCore : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"ApplicationCore",
 				"depsVideoCore"
 				// ... add private dependencies that you statically link with here ...
 			}

@@ -47,5 +47,8 @@ public:
 
     UFUNCTION(BlueprintCallable)
     static FPlaneData FromBytesArray(const TArray<uint8>& d, int& offset);
+
+    UFUNCTION(BlueprintCallable)
+    static void ClipboardCopy(const FString& str);
 	
 };

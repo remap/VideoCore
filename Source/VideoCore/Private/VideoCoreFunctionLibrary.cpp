@@ -5,6 +5,7 @@
 #include "Containers/UnrealString.h"
 #include "Serialization/BufferArchive.h"
 #include "Serialization/MemoryReader.h"
+#include "HAL/PlatformApplicationMisc.h"
 
 TArray<uint8> UVideoCoreFunctionLibrary::ToBytesArray(const FPlaneData& d)
 {
@@ -46,4 +47,10 @@ TArray<uint8> UVideoCoreFunctionLibrary::StringToByteArray(const FString& str)
 FString UVideoCoreFunctionLibrary::ByteArrayToString(const TArray<uint8>& barr)
 {
 	return FString(ANSI_TO_TCHAR((ANSICHAR*)barr.GetData()));
+}
+
+
+void UVideoCoreFunctionLibrary::ClipboardCopy(const FString& str)
+{
+    FPlatformApplicationMisc::ClipboardCopy(*str);
 }
