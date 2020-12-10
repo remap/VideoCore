@@ -10,7 +10,7 @@
 
 #include "VideoCoreNdiClasses.generated.h"
 
-UCLASS(ClassGroup = (VideoCoreUI), Blueprintable, meta = (BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (VideoCore), Blueprintable, meta = (BlueprintSpawnableComponent))
 class VIDEOCORENDI_API UNdiSourceListItem : public UObject {
     GENERATED_BODY()
 public:
@@ -18,7 +18,7 @@ public:
     FNDIConnectionInformation ndiSourceInfo_;
 };
 
-UCLASS(ClassGroup = (VideoCoreUI), Blueprintable, HideDropdown, HideCategories = (ImportSettings, Compression, Texture, Adjustments, Compositing, LevelOfDetail, Object), meta = (BlueprintSpawnableComponent, DisplayName = "VideoCore NDI Media Texture 2D"))
+UCLASS(ClassGroup = (VideoCore), Blueprintable, HideDropdown, HideCategories = (ImportSettings, Compression, Texture, Adjustments, Compositing, LevelOfDetail, Object), meta = (BlueprintSpawnableComponent, DisplayName = "VideoCore NDI Media Texture 2D"))
 class VIDEOCORENDI_API UVideoCoreNdiMediaTexture : public UNDIMediaTexture2D {
     GENERATED_BODY()
 };

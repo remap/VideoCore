@@ -49,7 +49,9 @@ public class VideoCoreNDI : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"depsVideoCore"
+				"depsVideoCore",
+				"Media",
+				"MediaAssets"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
