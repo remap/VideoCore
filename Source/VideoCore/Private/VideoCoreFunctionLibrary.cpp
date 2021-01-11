@@ -5,7 +5,17 @@
 #include "Containers/UnrealString.h"
 #include "Serialization/BufferArchive.h"
 #include "Serialization/MemoryReader.h"
+#include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 #include "HAL/PlatformApplicationMisc.h"
+#include "VideoCorePlane.h"
+
+struct FPlaneProxyArchive : public FObjectAndNameAsStringProxyArchive
+{
+    FPlaneProxyArchive(FArchive& ar) : FObjectAndNameAsStringProxyArchive(ar, true)
+    {
+        ArIsSaveGame = true;
+    }
+};
 
 TArray<uint8> UVideoCoreFunctionLibrary::ToBytesArray(const FPlaneData& d)
 {
@@ -53,4 +63,39 @@ FString UVideoCoreFunctionLibrary::ByteArrayToString(const TArray<uint8>& barr)
 void UVideoCoreFunctionLibrary::ClipboardCopy(const FString& str)
 {
     FPlatformApplicationMisc::ClipboardCopy(*str);
+}
+
+TArray<FPlaneRecord> UVideoCoreFunctionLibrary::SerializePlanes(const TArray<AVideoCorePlane*>& planes)
+{
+    TArray<FPlaneRecord> records;
+
+    for (auto p : planes)
+    {
+        FPlaneRecord rec;
+        rec.className_ = p->GetClass()->GetPathName();
+        rec.planeName_ = p->GetName();
+
+        UE_LOG(LogTemp, Log, TEXT("serializing plane %s class %s"),
+            *rec.planeName_, *rec.className_);
+        
+        FMemoryWriter memWriter(rec.planeData_);
+        FPlaneProxyArchive planeArchive(memWriter);
+        p->Serialize(planeArchive);
+
+        UE_LOG(LogTemp, Log, TEXT("serialized plane %s into array %d bytes"),
+            *rec.planeName_, rec.planeData_.Num());
+
+        records.Add(rec);
+    }
+
+    return records;
+}
+
+void UVideoCoreFunctionLibrary::DeserializePlane(AVideoCorePlane* plane, const FPlaneRecord& rec)
+{
+    FMemoryReader memReader(rec.planeData_);
+    FPlaneProxyArchive planeArchive(memReader);
+
+    plane->Serialize(planeArchive);
+    plane->OnDeserializationCompleted();
 }

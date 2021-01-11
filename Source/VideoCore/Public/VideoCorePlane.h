@@ -31,4 +31,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent)
 	bool InitFromSerializedData(TArray<uint8>& data);
+	
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	void OnDeserializationCompleted();
+
+	virtual void OnDeserializationCompleted_Implementation();
 };

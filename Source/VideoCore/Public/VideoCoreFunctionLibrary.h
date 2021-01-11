@@ -27,6 +27,32 @@ struct FPlaneData {
         FTwoVectors textureCrop_;
 };
 
+USTRUCT(Blueprintable)
+struct FPlaneRecord {
+
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadonly)
+    FString planeName_;
+    
+    UPROPERTY()
+    FString className_;
+
+    UPROPERTY()
+    TArray<uint8> planeData_;
+
+    friend FArchive& operator<<(FArchive& ar, FPlaneRecord& rec)
+    {
+        ar << rec.className_;
+        ar << rec.planeName_;
+        ar << rec.planeData_;
+
+        return ar;
+    }
+};
+
+class AVideoCorePlane;
+
 /**
  * 
  */
@@ -50,5 +76,11 @@ public:
 
     UFUNCTION(BlueprintCallable)
     static void ClipboardCopy(const FString& str);
+
+    UFUNCTION(BlueprintCallable)
+    static TArray<FPlaneRecord> SerializePlanes(const TArray<AVideoCorePlane*>& planes);
+
+    UFUNCTION(BlueprintCallable)
+    static void DeserializePlane(AVideoCorePlane* plane, const FPlaneRecord& data);
 	
 };

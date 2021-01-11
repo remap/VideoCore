@@ -32,3 +32,6 @@ void AVideoCorePlane::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 }
 
+void AVideoCorePlane::OnDeserializationCompleted_Implementation()
+{
+}
