@@ -51,6 +51,14 @@ struct FPlaneRecord {
     }
 };
 
+UENUM(BlueprintType)
+enum class EVideoCorePlaneOrientation : uint8 {
+    HorizontalDefault UMETA(DisplayName="Horizontal Default"),
+    VerticalLeft UMETA(DisplayName="Vertical Left"),
+    VerticalRight UMETA(DisplayName="Vertical Right"),
+    UpsideDown UMETA(DisplayName="Upside Down")
+};
+
 class AVideoCorePlane;
 
 /**
