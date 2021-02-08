@@ -1,19 +1,24 @@
 //
-// VideoCore.Build.cs
+// VideoCoreRTC.Build.cs
 //
-//  Generated on June 24 2020
+//  Generated on Feb 8 2021
 //  Template created by Peter Gusev on 27 January 2020.
-//  Copyright 2013-2019 Regents of the University of California
+//  Copyright 2013-2021 Regents of the University of California
 //
 
 using UnrealBuildTool;
 
-public class VideoCore : ModuleRules
+public class VideoCoreRTC : ModuleRules
 {
-	public VideoCore(ReadOnlyTargetRules Target) : base(Target)
+	public VideoCoreRTC(ReadOnlyTargetRules Target) : base(Target)
 	{
+		CppStandard = CppStandardVersion.Cpp17;
+		bEnableExceptions = true;
+		bUseRTTI = true;
+		UnsafeTypeCastWarningLevel = WarningLevel.Off;
+
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
+
 		PublicIncludePaths.AddRange(
 			new string[] {
 				// ... add public include paths required here ...
@@ -33,6 +38,7 @@ public class VideoCore : ModuleRules
 			{
 				"Core",
 				"UMG",
+				"VideoCore",
 				"DDBase",
 				"DDLog"
 				// ... add other public dependencies that you statically link with here ...
@@ -47,8 +53,9 @@ public class VideoCore : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"ApplicationCore",
-				"depsVideoCore"
+				"depsVideoCore",
+				"Media",
+				"MediaAssets"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

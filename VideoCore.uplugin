@@ -24,14 +24,22 @@
 				"Android"
 			]
 		},
-        {
-            "Name": "VideoCoreNDI",
-            "Type": "Runtime",
-            "LoadingPhase": "Default",
-            "WhitelistPlatforms": [
-                "Win64"
-            ]
-        }
+		{
+			"Name": "VideoCoreNDI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
+		},
+		{
+			"Name": "VideoCoreRTC",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
+		}
 	],
 	"Plugins" : [
 		{
