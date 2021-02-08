@@ -13,6 +13,10 @@ public class VideoCore : ModuleRules
 	public VideoCore(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+		CppStandard = CppStandardVersion.Cpp17;
+		bEnableExceptions = true;
+		bUseRTTI = true;
+		UnsafeTypeCastWarningLevel = WarningLevel.Off;
 
 		PublicIncludePaths.AddRange(
 			new string[] {
