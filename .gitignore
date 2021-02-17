@@ -75,6 +75,6 @@ DerivedDataCache/*
 git-describe.h
 .DS_Store
 
-Source/ThirdParty/depsVideoCore/webrtc/*
-Source/ThirdParty/depsVideoCore/libmediasoup/*
-Source/ThirdParty/depsVideoCore/libsdptransform/*
+Source/ThirdParty/webrtc/*
+Source/ThirdParty/libmediasoup/*
+Source/ThirdParty/libsdptransform/*

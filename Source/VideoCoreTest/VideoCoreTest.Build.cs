@@ -47,8 +47,7 @@ public class VideoCoreTest : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"Slate",
-				"SlateCore",
-				"depsVideoCore"
+				"SlateCore"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

@@ -49,6 +49,10 @@
 		{
 			"Name": "NDIIOPlugin",
 			"Enabled": true
+		},
+		{
+			"Name": "SocketIOClient",
+			"Enabled": true
 		}
 	],
 	"PreBuildSteps" : {
