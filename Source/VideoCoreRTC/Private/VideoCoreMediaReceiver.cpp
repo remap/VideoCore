@@ -8,12 +8,26 @@
 #include "VideoCoreMediaReceiver.h"
 #include "native/video-core-rtc.hpp"
 #include "SIOJConvert.h"
+#include "Texture2DResource.h"
+#include "third_party/libyuv/include/libyuv.h"
 
 using namespace videocore;
+
+UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer) 
+{
+	frameBgraBuffer_ = nullptr;
+	videoTexture_ = UTexture2D::CreateTransient(640, 480, EPixelFormat::PF_B8G8R8A8);
+	videoTexture_->UpdateResource();
+	videoTexture_->RefreshSamplerStates();
+}
 
 void UVideoCoreMediaReceiver::Init(UVideoCoreSignalingComponent* vcSiganlingComponent)
 {
 	vcComponent_ = vcSiganlingComponent;
+	
+	FCoreDelegates::OnEndFrameRT.RemoveAll(this);
+	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaReceiver::captureVideoFrame);
 }
 
 void UVideoCoreMediaReceiver::Consume(FString producerId)
@@ -148,8 +162,74 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 		vf.width(), vf.height(), vf.timestamp(), vf.size(),
 		vf.is_texture());
 
-	if (vf.color_space())
+	if (!videoTexture_ ||
+		videoTexture_->GetSizeX() != vf.width() ||
+		videoTexture_->GetSizeY() != vf.height() ||
+		!frameBgraBuffer_)
 	{
-		webrtc::ColorSpace clrSpace = vf.color_space().value();
+		initTexture(vf.width(), vf.height());
 	}
+
+	webrtc::VideoFrameBuffer::Type t = vf.video_frame_buffer()->type();
+	if (t == webrtc::VideoFrameBuffer::Type::kI420)
+	{
+		const webrtc::I420BufferInterface *vfBuf = vf.video_frame_buffer()->GetI420();
+
+		if (vfBuf)
+		{
+			FScopeLock RenderLock(&renderSyncContext_);
+
+			//libyuv::I420ToRGBA
+			libyuv::I420ToARGB
+			//libyuv::I420ToBGRA
+			(vfBuf->DataY(), vfBuf->StrideY(),
+				vfBuf->DataU(), vfBuf->StrideU(),
+				vfBuf->DataV(), vfBuf->StrideV(),
+				frameBgraBuffer_, 4 * vf.width(), vf.width(), vf.height());
+			hasNewFrame_ = true;
+		}
+	}
+	else
+	{
+		// set error
+	}
+}
+
+void
+UVideoCoreMediaReceiver::captureVideoFrame()
+{
+	FScopeLock RenderLock(&renderSyncContext_);
+
+	if (frameBgraBuffer_ && hasNewFrame_)
+	{
+		FUpdateTextureRegion2D region;
+		region.SrcX = 0;
+		region.SrcY = 0;
+		region.DestX = 0;
+		region.DestY = 0;
+		region.Width = videoTexture_->GetSizeX();
+		region.Height = videoTexture_->GetSizeY();
+
+		FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
+		RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, region.Width * 4, frameBgraBuffer_);
+
+		hasNewFrame_ = false;
+	}
+}
+
+void
+UVideoCoreMediaReceiver::initTexture(int width, int height)
+{
+	FScopeLock RenderLock(&renderSyncContext_);
+
+	/*videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8);*/
+	
+	// TODO: replace with smarter realloc-y logic
+	if (frameBgraBuffer_)
+		free(frameBgraBuffer_);
+
+	bufferSize_ = width * height * 4;
+	frameBgraBuffer_ = (uint8_t*) malloc(bufferSize_);
+	memset(frameBgraBuffer_, 0, bufferSize_);
+	hasNewFrame_ = false;
 }

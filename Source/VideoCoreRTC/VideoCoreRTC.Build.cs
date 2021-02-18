@@ -52,7 +52,9 @@ public class VideoCoreRTC : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
-				"Slate",
+                "RenderCore",
+                "RHI",
+                "Slate",
 				"SlateCore",
 				"Media",
 				"MediaAssets"

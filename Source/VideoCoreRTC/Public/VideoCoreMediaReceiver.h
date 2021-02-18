@@ -10,6 +10,7 @@
 #include "CoreMinimal.h"
 #include "BaseMediaSource.h"
 #include "VideoCoreSignalingComponent.h"
+#include "Engine/Texture2DDynamic.h"
 
 #pragma warning(disable:4596)
 #pragma warning(disable:4800)
@@ -26,7 +27,7 @@ class VIDEOCORERTC_API UVideoCoreMediaReceiver : public UBaseMediaSource
 	, public mediasoupclient::Consumer::Listener
 	, public rtc::VideoSinkInterface<webrtc::VideoFrame>
 {
-	GENERATED_BODY()
+	GENERATED_UCLASS_BODY()
 	
 public:
 	UFUNCTION(BlueprintCallable)
@@ -35,6 +36,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void Consume(FString producerId);
 
+	UFUNCTION(BlueprintCallable)
+	UTexture2D* getVideoTexture() const { return videoTexture_;  }
 private:
 
 	UPROPERTY()
@@ -60,4 +63,15 @@ private:
 	mediasoupclient::Consumer* consumer_;
 
 	rtc::scoped_refptr<webrtc::MediaStreamInterface> stream_;
+
+	// render texture
+	FCriticalSection renderSyncContext_;
+	uint32_t bufferSize_;
+	uint8_t* frameBgraBuffer_;
+	bool hasNewFrame_;
+	//UTexture2DDynamic* videoTexture_;
+	UTexture2D* videoTexture_;
+
+	void initTexture(int w, int h);
+	void captureVideoFrame();
 };
