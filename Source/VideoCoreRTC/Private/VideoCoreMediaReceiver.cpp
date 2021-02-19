@@ -35,6 +35,15 @@ void UVideoCoreMediaReceiver::Consume(FString producerId)
 	subscribe();
 }
 
+void UVideoCoreMediaReceiver::BeginDestroy()
+{
+	shutdown();
+
+	// Call the base implementation of 'BeginDestroy'
+	Super::BeginDestroy();
+}
+
+// ****
 void UVideoCoreMediaReceiver::subscribe()
 {
 	auto obj = USIOJConvert::MakeJsonObject();
@@ -232,4 +241,35 @@ UVideoCoreMediaReceiver::initTexture(int width, int height)
 	frameBgraBuffer_ = (uint8_t*) malloc(bufferSize_);
 	memset(frameBgraBuffer_, 0, bufferSize_);
 	hasNewFrame_ = false;
+}
+
+void
+UVideoCoreMediaReceiver::shutdown()
+{
+	FScopeLock RenderLock(&renderSyncContext_);
+	
+	for (auto t : stream_->GetVideoTracks())
+	{
+		t->set_enabled(false);
+		t->RemoveSink(this);
+		stream_->RemoveTrack(t);
+	}
+
+	for (auto t : stream_->GetAudioTracks())
+	{
+		t->set_enabled(false);
+		t->RemoveSink(this);
+		
+		stream_->RemoveTrack(t);
+	}
+
+	consumer_->Close();
+	recvTransport_->Close();
+
+	free(frameBgraBuffer_);
+	bufferSize_ = 0;
+
+	// TODO: notify server we're closing transport and consumer
+	delete recvTransport_;
+	delete consumer_;
 }

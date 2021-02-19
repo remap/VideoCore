@@ -26,6 +26,7 @@ class VIDEOCORERTC_API UVideoCoreMediaReceiver : public UBaseMediaSource
 	, public mediasoupclient::Transport::Listener
 	, public mediasoupclient::Consumer::Listener
 	, public rtc::VideoSinkInterface<webrtc::VideoFrame>
+	, public webrtc::AudioTrackSinkInterface
 {
 	GENERATED_UCLASS_BODY()
 	
@@ -38,6 +39,14 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	UTexture2D* getVideoTexture() const { return videoTexture_;  }
+
+protected:
+	/**
+	Called before destroying the object.  This is called immediately upon deciding to destroy the object,
+	to allow the object to begin an asynchronous cleanup process.
+	*/
+	void BeginDestroy() override;
+
 private:
 
 	UPROPERTY()
@@ -74,4 +83,6 @@ private:
 
 	void initTexture(int w, int h);
 	void captureVideoFrame();
+
+	void shutdown();
 };
