@@ -88,15 +88,16 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t)
 		if (m->HasField(TEXT("id")))
 		{
 			nlohmann::json rtpParams = fromFJsonObject(m->GetObjectField(TEXT("rtpParameters")));
+			std::string producerId(TCHAR_TO_ANSI(*(m->GetStringField(TEXT("id")))));
 
 			consumer_ = recvTransport_->Consume(this,
-				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("id")))),
+				producerId,
 				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("producerId")))),
 				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("kind")))),
 				&rtpParams
 			);
 
-			stream_ = getWebRtcFactory()->CreateLocalMediaStream("recv_stream");
+			stream_ = getWebRtcFactory()->CreateLocalMediaStream("recv_"+producerId);
 
 			if (stream_)
 			{
