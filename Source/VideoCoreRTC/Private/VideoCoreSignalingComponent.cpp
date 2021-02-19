@@ -34,7 +34,7 @@ void UVideoCoreSignalingComponent::BeginPlay()
 		videocore::initialize();
 
 		sIOClientComponent->Disconnect();
-		sIOClientComponent->InitializeComponent();
+		sIOClientComponent->SetupCallbacks();
 		setupVideoCoreServerCallbacks();
 		sIOClientComponent->Connect(TEXT("https://192.168.0.9:3000"), TEXT("server"));
 	}
