@@ -11,15 +11,29 @@
 #include "Texture2DResource.h"
 #include "third_party/libyuv/include/libyuv.h"
 
+#include <Engine/Texture.h>
+#include <ExternalTexture.h>
+#include <TextureResource.h>
+
+// TODO: make it configurable from the editor
+static int kTextureWidth = 1920; 
+static int kTextureHeight = 1080;
+
 using namespace videocore;
 
 UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer) 
+	: Super(ObjectInitializer)
+	, bufferSize_(0)
+	, frameWidth_(0)
+	, frameHeight_(0)
+	, frameBgraBuffer_(nullptr)
+	, videoTexture_(nullptr)
 {
-	frameBgraBuffer_ = nullptr;
-	videoTexture_ = UTexture2D::CreateTransient(640, 480, EPixelFormat::PF_B8G8R8A8);
-	videoTexture_->UpdateResource();
-	videoTexture_->RefreshSamplerStates();
+	initTexture(kTextureWidth, kTextureHeight);
+}
+
+UVideoCoreMediaReceiver::~UVideoCoreMediaReceiver()
+{
 }
 
 void UVideoCoreMediaReceiver::Init(UVideoCoreSignalingComponent* vcSiganlingComponent)
@@ -104,6 +118,9 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t)
 				stream_->AddTrack((webrtc::VideoTrackInterface*)consumer_->GetTrack());
 
 				rtc::VideoSinkWants sinkWants;
+				// TODO: use these for downgrading/upgrading the resolution
+				//sinkWants.max_pixel_count
+				//sinkWants.target_pixel_count
 				((webrtc::VideoTrackInterface*)consumer_->GetTrack())->AddOrUpdateSink(this, sinkWants);
 
 				webrtc::MediaStreamTrackInterface::TrackState s = consumer_->GetTrack()->state();
@@ -117,6 +134,7 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t)
 		else
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Can not consume"));
+			// TODO: add callback here
 		}
 	});
 }
@@ -168,16 +186,20 @@ UVideoCoreMediaReceiver::OnTransportClose(mediasoupclient::Consumer* consumer)
 void
 UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 {
-	UE_LOG(LogTemp, Log, TEXT("Incoming frame %dx%d %udms %d bytes, texture %d"),
+	/*UE_LOG(LogTemp, Log, TEXT("Incoming frame %dx%d %udms %d bytes, texture %d"),
 		vf.width(), vf.height(), vf.timestamp(), vf.size(),
-		vf.is_texture());
+		vf.is_texture());*/
 
 	if (!videoTexture_ ||
-		videoTexture_->GetSizeX() != vf.width() ||
-		videoTexture_->GetSizeY() != vf.height() ||
+		frameWidth_ != vf.width() ||
+		frameHeight_ != vf.height() ||
 		!frameBgraBuffer_)
 	{
-		initTexture(vf.width(), vf.height());
+		FScopeLock RenderLock(&renderSyncContext_);
+
+		frameWidth_ = vf.width();
+		frameHeight_ = vf.height();
+		needFrameBuffer_ = true;
 	}
 
 	webrtc::VideoFrameBuffer::Type t = vf.video_frame_buffer()->type();
@@ -189,19 +211,21 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 		{
 			FScopeLock RenderLock(&renderSyncContext_);
 
-			//libyuv::I420ToRGBA
-			libyuv::I420ToARGB
-			//libyuv::I420ToBGRA
-			(vfBuf->DataY(), vfBuf->StrideY(),
-				vfBuf->DataU(), vfBuf->StrideU(),
-				vfBuf->DataV(), vfBuf->StrideV(),
-				frameBgraBuffer_, 4 * vf.width(), vf.width(), vf.height());
-			hasNewFrame_ = true;
+			if (frameBgraBuffer_)
+			{
+				libyuv::I420ToARGB
+				//libyuv::I420ToBGRA
+					(vfBuf->DataY(), vfBuf->StrideY(),
+						vfBuf->DataU(), vfBuf->StrideU(),
+						vfBuf->DataV(), vfBuf->StrideV(),
+						frameBgraBuffer_, 4 * frameWidth_, frameWidth_, frameHeight_);
+				hasNewFrame_ = true;
+			}
 		}
 	}
 	else
 	{
-		// set error
+		// TODO: set error
 	}
 }
 
@@ -210,6 +234,12 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 {
 	FScopeLock RenderLock(&renderSyncContext_);
 
+	if (needFrameBuffer_)
+	{
+		initFrameBuffer(frameWidth_, frameHeight_);
+		needFrameBuffer_ = false;
+	}
+
 	if (frameBgraBuffer_ && hasNewFrame_)
 	{
 		FUpdateTextureRegion2D region;
@@ -217,11 +247,11 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 		region.SrcY = 0;
 		region.DestX = 0;
 		region.DestY = 0;
-		region.Width = videoTexture_->GetSizeX();
-		region.Height = videoTexture_->GetSizeY();
+		region.Width = frameWidth_;
+		region.Height = frameHeight_;
 
 		FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
-		RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, region.Width * 4, frameBgraBuffer_);
+		RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, frameWidth_ * 4, frameBgraBuffer_);
 
 		hasNewFrame_ = false;
 	}
@@ -230,18 +260,57 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 void
 UVideoCoreMediaReceiver::initTexture(int width, int height)
 {
-	FScopeLock RenderLock(&renderSyncContext_);
+	if (!videoTexture_)
+	{
+		videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8);
+		videoTexture_->UpdateResource();
+		videoTexture_->RefreshSamplerStates();
+	}
+	else if (videoTexture_->GetSizeX() != width || videoTexture_->GetSizeY() != height)
+	{
+		videoTexture_->ReleaseResource();
 
-	/*videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8);*/
-	
+		if (FTextureResource* TextureResource = new FTextureResource())
+		{
+			videoTexture_->Resource = TextureResource;
+
+			// Set the default video texture to reference nothing
+			TRefCountPtr<FRHITexture2D> RenderableTexture;
+			FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(FLinearColor::Black) };
+
+			RenderableTexture = RHICreateTexture2D(width, height,
+				EPixelFormat::PF_B8G8R8A8, 1, 1,
+				TexCreate_Dynamic | TexCreate_SRGB, CreateInfo);
+
+			TextureResource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
+
+			ENQUEUE_RENDER_COMMAND(FNDIMediaTexture2DUpdateTextureReference)(
+				[&](FRHICommandListImmediate& RHICmdList) {
+
+				RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, TextureResource->TextureRHI);
+			});
+		}
+	}
+}
+
+void
+UVideoCoreMediaReceiver::initFrameBuffer(int width, int height)
+{
+	initTexture(width, height);
+
 	// TODO: replace with smarter realloc-y logic
 	if (frameBgraBuffer_)
 		free(frameBgraBuffer_);
 
+	frameWidth_ = width;
+	frameHeight_ = height;
 	bufferSize_ = width * height * 4;
 	frameBgraBuffer_ = (uint8_t*) malloc(bufferSize_);
 	memset(frameBgraBuffer_, 0, bufferSize_);
 	hasNewFrame_ = false;
+
+	assert(videoTexture_->GetSizeX() == frameWidth_);
+	assert(videoTexture_->GetSizeY() == frameHeight_);
 }
 
 void

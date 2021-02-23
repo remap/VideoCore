@@ -31,6 +31,8 @@ class VIDEOCORERTC_API UVideoCoreMediaReceiver : public UBaseMediaSource
 	GENERATED_UCLASS_BODY()
 	
 public:
+	~UVideoCoreMediaReceiver();
+
 	UFUNCTION(BlueprintCallable)
 	void Init(UVideoCoreSignalingComponent* vcSiganlingComponent);
 
@@ -75,13 +77,14 @@ private:
 
 	// render texture
 	FCriticalSection renderSyncContext_;
-	uint32_t bufferSize_;
+	uint32_t frameWidth_, frameHeight_, bufferSize_;
 	uint8_t* frameBgraBuffer_;
-	bool hasNewFrame_;
+	bool needFrameBuffer_, hasNewFrame_;
 	//UTexture2DDynamic* videoTexture_;
 	UTexture2D* videoTexture_;
 
 	void initTexture(int w, int h);
+	void initFrameBuffer(int w, int h);
 	void captureVideoFrame();
 
 	void shutdown();
