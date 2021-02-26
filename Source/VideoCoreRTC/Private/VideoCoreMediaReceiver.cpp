@@ -453,28 +453,19 @@ UVideoCoreMediaReceiver::GeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamp
 {
 	FScopeLock Lock(&audioSyncContext_);
 
-	size_t nSamples = nChannels_ * nFrames_;
 	int32 bytesPerSample = (int32)ceil((float)bps_ / 8.);
 	int32 nCopiedSamples = 0;
 	
 	int32 bytesAsked = bytesPerSample * NumSamples;
+	int32 bytesCopy = (bytesAsked > audioBuffer_.size() ? audioBuffer_.size() : bytesAsked);
 
 	OutAudio.Reset();
+	OutAudio.AddZeroed(bytesCopy);
+	FMemory::Memcpy(OutAudio.GetData(), audioBuffer_.data(), bytesCopy);
+	nCopiedSamples = bytesCopy / bytesPerSample;
+	audioBuffer_.erase(audioBuffer_.begin(), audioBuffer_.begin() + bytesCopy);
 
-	if (bytesAsked > audioBuffer_.size())
-	{
-		OutAudio.AddZeroed(audioBuffer_.size());
-		nCopiedSamples = audioBuffer_.size() / bytesPerSample;
-	}
-	else
-	{
-		OutAudio.AddZeroed(bytesAsked);
-		FMemory::Memcpy(OutAudio.GetData() + nCopiedSamples, audioBuffer_.data(), bytesAsked);
-		audioBuffer_.erase(audioBuffer_.begin(), audioBuffer_.begin() + bytesAsked);
-		nCopiedSamples = NumSamples;
-	}
-
-	UE_LOG(LogTemp, Log, TEXT("buffer level %d bytes"), audioBuffer_.size());
+	//UE_LOG(LogTemp, Log, TEXT("buffer level %d bytes"), audioBuffer_.size());
 
 	return nCopiedSamples;
 }
