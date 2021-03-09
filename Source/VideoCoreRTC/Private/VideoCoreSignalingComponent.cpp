@@ -15,16 +15,13 @@ UVideoCoreSignalingComponent::UVideoCoreSignalingComponent()
 	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
 
-	// ...
+	bWantsInitializeComponent = true;
 }
 
-// Called when the game starts
-void UVideoCoreSignalingComponent::BeginPlay()
+void UVideoCoreSignalingComponent::InitializeComponent()
 {
-	Super::BeginPlay();
-
-	sIOClientComponent = Cast<USocketIOClientComponent>(this->GetOwner()->GetComponentByClass(USocketIOClientComponent::StaticClass()));
-	if (!sIOClientComponent)
+	sIOClientComponent_ = Cast<USocketIOClientComponent>(this->GetOwner()->GetComponentByClass(USocketIOClientComponent::StaticClass()));
+	if (!sIOClientComponent_)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No sister socket IO component found"));
 		return;
@@ -32,14 +29,31 @@ void UVideoCoreSignalingComponent::BeginPlay()
 	else
 	{
 		videocore::initialize();
-
-		sIOClientComponent->Disconnect();
-		sIOClientComponent->SetupCallbacks();
-		setupVideoCoreServerCallbacks();
-		sIOClientComponent->Connect(TEXT("https://192.168.0.9:3000"), TEXT("server"));
 	}
 }
 
+// Called when the game starts
+void UVideoCoreSignalingComponent::BeginPlay()
+{
+	Super::BeginPlay();
+}
+
+void UVideoCoreSignalingComponent::connect(FString url, FString path)
+{
+	UE_LOG(LogTemp, Log, TEXT("Connecting %s (%s)..."), *url, *path);
+
+	sIOClientComponent_->Disconnect();
+	sIOClientComponent_->SetupCallbacks();
+	setupVideoCoreServerCallbacks();
+
+	USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
+	if (!clientName.IsEmpty())
+		query->SetStringField(TEXT("name"), clientName);
+	if (!clientId.IsEmpty())
+		query->SetStringField(TEXT("id"), clientId);
+
+	sIOClientComponent_->Connect(url, path, query);
+}
 
 // Called every frame
 void UVideoCoreSignalingComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -51,8 +65,46 @@ void UVideoCoreSignalingComponent::TickComponent(float DeltaTime, ELevelTick Tic
 
 void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 {
-	sIOClientComponent->OnConnected.AddDynamic(this, &UVideoCoreSignalingComponent::onConnectedToServer);
-	sIOClientComponent->OnDisconnected.AddDynamic(this, &UVideoCoreSignalingComponent::onDisconnected);
+	sIOClientComponent_->OnConnected.AddDynamic(this, &UVideoCoreSignalingComponent::onConnectedToServer);
+	sIOClientComponent_->OnDisconnected.AddDynamic(this, &UVideoCoreSignalingComponent::onDisconnected);
+	
+	sIOClientComponent_->OnNativeEvent(TEXT("newClient"), [&](const FString&, const TSharedPtr<FJsonValue>& data) {
+		auto m = data->AsObject();
+		FString clientName = m->GetStringField(TEXT("name"));
+		FString clientId = m->GetStringField(TEXT("id"));
+
+		UE_LOG(LogTemp, Log, TEXT("new client %s %s"), *clientName, *clientId);
+
+		OnNewClientConnected.Broadcast(clientName, clientId);
+		onNewClient_ .Broadcast(clientName, clientId);
+		// TODO: add to local client roster
+	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("clientDisconnected"), [&](const FString& msg, const TSharedPtr<FJsonValue>& data) {
+		UE_LOG(LogTemp, Log, TEXT("client disconnected %s %s"), *msg, *USIOJConvert::ToJsonString(data));
+
+		OnClientLeft.Broadcast(data->AsString());
+		onClientLeft_.Broadcast(data->AsString());
+	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("newProducer"),
+		[&](const FString& msg, const TSharedPtr<FJsonValue>& data)
+	{
+		auto m = data->AsObject();
+		FString clientId = m->GetStringField(TEXT("clientId"));
+		FString producerId = m->GetStringField(TEXT("producerId"));
+
+		UE_LOG(LogTemp, Log, TEXT("client {%s} created new producer {%s}"), *clientId, *producerId);
+		onNewProducer_.Broadcast(clientId, producerId);
+	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("admit"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
+		auto m = response->AsObject();
+		UE_LOG(LogTemp, Log, TEXT("Admitted as %s (id %s)"), *m->GetStringField(TEXT("name")), *m->GetStringField(TEXT("id")));
+
+		this->clientName = m->GetStringField(TEXT("name"));
+		this->clientId = m->GetStringField(TEXT("id"));
+	});
 }
 
 void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool bIsReconnection)
@@ -62,7 +114,7 @@ void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool b
 	{
 		UE_LOG(LogTemp, Log, TEXT("VideoCore media server connected"));
 
-		sIOClientComponent->EmitNative(TEXT("getRouterRtpCapabilities"), nullptr, [this](auto response) {
+		sIOClientComponent_->EmitNative(TEXT("getRouterRtpCapabilities"), nullptr, [this](auto response) {
 			auto m = response[0]->AsObject();
 
 			{

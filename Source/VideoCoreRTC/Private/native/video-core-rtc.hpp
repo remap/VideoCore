@@ -28,4 +28,10 @@ namespace videocore
 	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> getWebRtcFactory();
 
 	void loadMediaSoupDevice(TSharedPtr<FJsonValue> rtpCapabilities);
+
+	// mediasoupclient::Device object is loaded by signalling component (VideoCoreSignalingComponent)
+	// once successfully connected to media server and fetched RTP capabilities
+	// since different media streamin actors can access device at will, this function
+	// ensures that the callback is executed only when device has been successfully loaded
+	void ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb);
 }

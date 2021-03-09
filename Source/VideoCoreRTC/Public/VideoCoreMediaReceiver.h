@@ -19,9 +19,61 @@
 
 #include "VideoCoreMediaReceiver.generated.h"
 
+// TODO: move enums into a separate file
+UENUM(BlueprintType)
+enum class EClientState : uint8 {
+	Offline UMETA(DisplayName="Offline"),
+	NotProducing UMETA(DisplayName="Not Producing"),
+	Producing UMETA(DisplayName="Producing")
+};
+
+UENUM(BlueprintType)
+enum class EMediaTrackKind : uint8 {
+	Audio UMETA(DisplayName="Audio"),
+	Video UMETA(DisplayName="Video")
+};
+
+UENUM(BlueprintType)
+enum class EMediaTrackState : uint8 {
+	Unknown UMETA(DisplayName = "Unknown"),
+	Ended UMETA(DisplayName="Ended"),
+	Live UMETA(DisplayName="Live")
+};
+
+USTRUCT(BlueprintType, Blueprintable, Category = "VideoCore RTC", META = (DisplayName = "VideoCore RTC Stats"))
+struct VIDEOCORERTC_API FVideoCoreMediaStreamStatistics
+{
+	GENERATED_USTRUCT_BODY()
+
+public:
+	UPROPERTY(BlueprintReadOnly)
+	int AudioLevel;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool TypingNoiseDetected;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool VoiceDetected;
+
+	UPROPERTY(BlueprintReadOnly)
+	int SamplesReceived;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString VideoContentHint;
+
+	UPROPERTY(BlueprintReadOnly)
+	int FramesReceived;
+};
+
+
 class UVideoCoreSoundWave;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCorMediaReceiverSoundSourceReady, USoundWave*, SoundWave);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverClientStateChanged, EClientState, State);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, FString, Kind);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStopped, FString, ProducerId, FString, Reason);
+
+DECLARE_MULTICAST_DELEGATE(FVideoCoreMediaReceiverTransportReady);
 
 /**
  * Media source used for rendering incoming WebRTC media track. Can render one video and one audio track only.
@@ -42,13 +94,56 @@ public: // UE
 	void Init(UVideoCoreSignalingComponent* vcSiganlingComponent);
 
 	UFUNCTION(BlueprintCallable)
-	void Consume(FString producerId);
+	void Consume(FString clientId);
+
+	UFUNCTION(BlueprintCallable)
+	void Stop();
 
 	UFUNCTION(BlueprintCallable)
 	UTexture2D* getVideoTexture() const { return videoTexture_;  }
 
+	UFUNCTION(BlueprintCallable)
+	EClientState getClientState() const { return clientState_; }
+
+	UFUNCTION(BlueprintCallable)
+	bool hasTrackOfType(EMediaTrackKind Kind) const;
+
+	UFUNCTION(BlueprintCallable)
+	bool getIsTrackEnabled(EMediaTrackKind Kind) const;
+
+	UFUNCTION(BlueprintCallable)
+	void setTrackEnabled(EMediaTrackKind Kind, bool enabled);
+
+	UFUNCTION(BlueprintCallable)
+	EMediaTrackState getTrackState(EMediaTrackKind Kind) const;
+
+	UFUNCTION(BlueprintCallable)
+	FVideoCoreMediaStreamStatistics getStats() const;
+
 	UPROPERTY(BlueprintAssignable)
 	FVideoCorMediaReceiverSoundSourceReady OnSoundSourceReady;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverClientStateChanged OnClientStateChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverStreamingStarted OnStreamingStarted;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverStreamingStopped OnStreamingStopped;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool AutoConsume;
+
+	// TODO: make setter and re-start streaming if clientId changes
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	FString clientId;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString videoProducerId;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString audioProducerId;
 
 public: // native
 
@@ -72,10 +167,15 @@ private: // UE
 	UPROPERTY()
 	UVideoCoreSoundWave* soundWave_;
 
+	TArray<FDelegateHandle> callbackHandles_;
+	FVideoCoreMediaReceiverTransportReady OnTransportReady;
+	EClientState clientState_;
+
 private: // native
 
-	void subscribe();
-	void consume(mediasoupclient::RecvTransport* t, bool consumeVideo = true);
+	void setupSocketCallbacks();
+	void setupConsumer();
+	void consume(mediasoupclient::RecvTransport* t, const std::string& streamId);
 
 	// mediasoupclient::Transport::Listener interface
 	std::future<void> OnConnect(
@@ -106,19 +206,24 @@ private: // native
 	uint8_t* frameBgraBuffer_;
 	bool needFrameBuffer_, hasNewFrame_;
 	UTexture2D* videoTexture_;
+	size_t framesReceived_; // TODO: multi-thread read access -- make atomic?
 
 	// audio rendering
 	FCriticalSection audioSyncContext_;
 	std::vector<uint8_t> audioBuffer_;
 	uint32_t nSamples_, nChannels_, bps_, nFrames_, sampleRate_;
+	size_t samplesReceived_; // TODO: multi-thread read access -- make atomic?
 
 	// helper calls
 	void initTexture(int w, int h);
 	void initFrameBuffer(int w, int h);
 	void captureVideoFrame();
 
+	void stopStreaming(const std::string& kind);
 	void shutdown();
 
 	void setupConsumerTrack(mediasoupclient::Consumer* c);
 	void setupSoundWave(int nChannels, int bps, int sampleRate);
+
+	void setState(EClientState state);
 };

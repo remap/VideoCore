@@ -23,6 +23,9 @@ static rtc::Thread* networkThread;
 static rtc::Thread* signalingThread;
 static rtc::Thread* workerThread;
 
+DECLARE_MULTICAST_DELEGATE(FVideoCoreRtcOnDeviceLoaded);
+static FVideoCoreRtcOnDeviceLoaded OnDeviceLoaded;
+static FCriticalSection deviceSync;
 static mediasoupclient::Device device;
 
 void createWebRtcFactory();
@@ -77,14 +80,29 @@ void videocore::loadMediaSoupDevice(TSharedPtr<FJsonValue> rtpCapabilities)
 		nlohmann::json caps = fromFJsonValue(rtpCapabilities);
 		mediasoupclient::PeerConnection::Options opt;
 		opt.factory = getWebRtcFactory();
-
 		device.Load(caps, &opt);
 	}
 	catch (std::exception& e)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Caught exception trying to load mediasoup device: %s"),
-			e.what());
+			ANSI_TO_TCHAR(e.what()));
 	}
+
+	if (device.IsLoaded())
+	{
+		FScopeLock Lock(&deviceSync);
+		OnDeviceLoaded.Broadcast();
+		OnDeviceLoaded.Clear();
+	}
+}
+
+void videocore::ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb)
+{
+	FScopeLock Lock(&deviceSync);
+
+	OnDeviceLoaded.AddLambda([cb]() {
+		cb(device);
+	});
 }
 
 // ****
