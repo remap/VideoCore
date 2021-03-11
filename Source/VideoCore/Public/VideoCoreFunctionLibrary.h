@@ -90,5 +90,8 @@ public:
 
     UFUNCTION(BlueprintCallable)
     static void DeserializePlane(AVideoCorePlane* plane, const FPlaneRecord& data);
+
+    UFUNCTION(BlueprintCallable)
+    static TMap<FString, FString> GetCommandLineArgs();
 	
 };
