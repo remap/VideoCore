@@ -11,6 +11,11 @@
 #include "Components/ActorComponent.h"
 #include "SocketIOClientComponent.h"
 #include "SIOJsonValue.h"
+
+#pragma warning(disable:4596)
+#pragma warning(disable:4800)
+#include "mediasoupclient.hpp"
+
 #include "VideoCoreSignalingComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSignalingConnected, USIOJsonObject*, RouterCaps);
@@ -23,8 +28,11 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewClient, FString, FS
 DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcInternalClientLeft, FString);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewProducer, FString, FString);
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverTransportReady, FString);
+
+UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Category = "VideoCore IO", META = (DisplayName = "VideoCoreRTC Signaling Component"))
 class VIDEOCORERTC_API UVideoCoreSignalingComponent : public UActorComponent
+	, public mediasoupclient::Transport::Listener
 {
 	GENERATED_BODY()
 private:
@@ -73,15 +81,31 @@ protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
-public:	
+public:	// native
+	mediasoupclient::RecvTransport* getRecvTransport() const { return recvTransport_; }
+	void invokeWhenRecvTransportReady(std::function<void(const mediasoupclient::RecvTransport*)> cb);
+
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-private:
+private: // UE
 	UFUNCTION()
 	void onConnectedToServer(FString SessionId, bool bIsReconnection);
 	UFUNCTION()
 	void onDisconnected(TEnumAsByte<ESIOConnectionCloseReason> Reason);
 
+	FVideoCoreMediaReceiverTransportReady onTransportReady_;
+
+private: // native
+	mediasoupclient::RecvTransport* recvTransport_;
+
+	// mediasoupclient::Transport::Listener interface
+	std::future<void> OnConnect(
+		mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters) override;
+	void OnConnectionStateChange(
+		mediasoupclient::Transport* transport, const std::string& connectionState) override;
+
 	void setupVideoCoreServerCallbacks();
+	void setupConsumerTransport();
+	void setupProducerTransport();
 };

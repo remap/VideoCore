@@ -8,6 +8,9 @@
 #include "VideoCoreSignalingComponent.h"
 #include "native/video-core-rtc.hpp"
 
+using namespace std;
+using namespace videocore;
+
 // Sets default values for this component's properties
 UVideoCoreSignalingComponent::UVideoCoreSignalingComponent()
 {
@@ -38,21 +41,31 @@ void UVideoCoreSignalingComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
+// TODO: add destroy call
+//if (recvTransport_)
+//{
+//	recvTransport_->Close();
+//	delete recvTransport_;
+//}
+
 void UVideoCoreSignalingComponent::connect(FString url, FString path)
 {
-	UE_LOG(LogTemp, Log, TEXT("Connecting %s (%s)..."), *url, *path);
+	if (sIOClientComponent_)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Connecting %s (%s)..."), *url, *path);
 
-	sIOClientComponent_->Disconnect();
-	sIOClientComponent_->SetupCallbacks();
-	setupVideoCoreServerCallbacks();
+		sIOClientComponent_->Disconnect();
+		sIOClientComponent_->SetupCallbacks();
+		setupVideoCoreServerCallbacks();
 
-	USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
-	if (!clientName.IsEmpty())
-		query->SetStringField(TEXT("name"), clientName);
-	if (!clientId.IsEmpty())
-		query->SetStringField(TEXT("id"), clientId);
+		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
+		if (!clientName.IsEmpty())
+			query->SetStringField(TEXT("name"), clientName);
+		if (!clientId.IsEmpty())
+			query->SetStringField(TEXT("id"), clientId);
 
-	sIOClientComponent_->Connect(url, path, query);
+		sIOClientComponent_->Connect(url, path, query);
+	}
 }
 
 // Called every frame
@@ -61,6 +74,16 @@ void UVideoCoreSignalingComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	// ...
+}
+
+void UVideoCoreSignalingComponent::invokeWhenRecvTransportReady(function<void(const mediasoupclient::RecvTransport*)> cb)
+{
+	if (recvTransport_)
+		cb(recvTransport_);
+	else
+		onTransportReady_.AddLambda([cb, this](FString tId) {
+			cb(this->getRecvTransport());
+		});
 }
 
 void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
@@ -107,6 +130,81 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 	});
 }
 
+void UVideoCoreSignalingComponent::setupConsumerTransport()
+{
+	auto obj = USIOJConvert::MakeJsonObject();
+	obj->SetBoolField(TEXT("forceTcp"), false);
+
+	sIOClientComponent_->EmitNative(TEXT("createConsumerTransport"), obj, [this](auto response) {
+		auto m = response[0]->AsObject();
+		FString errorMsg;
+
+		if (m->TryGetStringField(TEXT("error"), errorMsg))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Server failed to create consumer transport: %s"), *errorMsg);
+
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("Server created consumer transport. Reply %s"),
+				*USIOJConvert::ToJsonString(m));
+
+			nlohmann::json consumerData = fromFJsonObject(m);
+			recvTransport_ = getDevice().CreateRecvTransport(this,
+				consumerData["id"].get<std::string>(),
+				consumerData["iceParameters"],
+				consumerData["iceCandidates"],
+				consumerData["dtlsParameters"]);
+
+			onTransportReady_.Broadcast(FString(consumerData["id"].get<std::string>().c_str()));
+		}
+	});
+}
+
+void UVideoCoreSignalingComponent::setupProducerTransport()
+{
+
+}
+
+std::future<void>
+UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters)
+{
+	UE_LOG(LogTemp, Log, TEXT("Transport OnConnect"));
+
+	std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
+
+	nlohmann::json m = {
+		{"transportId", },
+		{"dtlsParameters", dtlsParameters} };
+
+	auto obj = USIOJConvert::MakeJsonObject();
+	obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
+	obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
+
+	sIOClientComponent_->EmitNative(TEXT("connectConsumerTransport"), obj, [promise](auto response) {
+		if (response.Num())
+		{
+			auto m = response[0]->AsObject();
+			UE_LOG(LogTemp, Log, TEXT("connectConsumerTransport reply %s"), *USIOJConvert::ToJsonString(m));
+		}
+	});
+
+	promise->set_value();
+	return promise->get_future();
+}
+
+void
+UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& connectionState)
+{
+	FString str(connectionState.c_str());
+	UE_LOG(LogTemp, Log, TEXT("Transport connection state change %s"), *str);
+
+	if (connectionState == "connected")
+		// TODO: replace with mcast delegate
+		sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {
+	});
+}
+
 void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool bIsReconnection)
 {
 	UE_LOG(LogTemp, Log, TEXT("onConnectedToServer called"));
@@ -133,6 +231,12 @@ void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool b
 				uobj->SetField(TEXT("rtpCapabilities"), caps);
 				OnRtcSubsystemInitialized.Broadcast(uobj);
 			}
+
+			// TODO: add err callback if device can't be loaded
+			videocore::ensureDeviceLoaded([this](mediasoupclient::Device&) {
+				setupConsumerTransport();
+				//setupProducerTransport();
+			});
 		});
 	}
 }

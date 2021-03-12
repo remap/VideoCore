@@ -33,7 +33,6 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, videoTexture_(nullptr)
 	, clientState_(EClientState::Offline)
 	, stream_(nullptr)
-	, recvTransport_(nullptr)
 	, audioConsumer_(nullptr)
 	, videoConsumer_(nullptr)
 {
@@ -55,15 +54,13 @@ void UVideoCoreMediaReceiver::Init(UVideoCoreSignalingComponent* vcSiganlingComp
 	setupSocketCallbacks();
 
 	// setup consumer objects
-	ensureDeviceLoaded([this](mediasoupclient::Device&) {
-		setupConsumer();
-	});
+	vcComponent_->invokeWhenRecvTransportReady([&](const mediasoupclient::RecvTransport* t) {
+		createStream();
 
-	// check if we should auto-consume
-	if (AutoConsume && !this->clientId.IsEmpty())
-		OnTransportReady.AddLambda([this]() { 
-			Consume(this->clientId); 
-		});
+		// check if we should auto-consume
+		if (this->AutoConsume && !this->clientId.IsEmpty())
+			Consume(this->clientId);
+	});
 }
 
 void UVideoCoreMediaReceiver::Consume(FString clientId)
@@ -87,12 +84,12 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 				// TODO: check if already streaming video and reset
 				if (obj->GetStringField("kind").Equals("video") && !consumeVideo)
 				{
-					consume(recvTransport_, TCHAR_TO_ANSI(*obj->GetStringField("id")));
+					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*obj->GetStringField("id")));
 					consumeVideo = true;
 				}
 				if (obj->GetStringField("kind").Equals("audio") && !consumeAudio)
 				{
-					consume(recvTransport_, TCHAR_TO_ANSI(*obj->GetStringField("id")));
+					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*obj->GetStringField("id")));
 					consumeAudio = true;
 				}
 			}
@@ -234,6 +231,7 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 			setState(EClientState::NotProducing);
 		}
 	});
+	callbackHandles_.Add(hndl);
 
 	hndl =
 	vcComponent_->onClientLeft_.AddLambda([&](FString clientId) 
@@ -254,43 +252,17 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 		{ // our client, started producing media
 			UE_LOG(LogTemp, Log, TEXT("new producer %s %s"), *clientId, *producerId);
 			setState(EClientState::Producing);
-			consume(recvTransport_, TCHAR_TO_ANSI(*producerId));
+			consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*producerId));
 		}
 	});
 	callbackHandles_.Add(hndl);
 }
 
-void UVideoCoreMediaReceiver::setupConsumer()
+void UVideoCoreMediaReceiver::createStream()
 {
-	auto obj = USIOJConvert::MakeJsonObject();
-	obj->SetBoolField(TEXT("forceTcp"), false);
+	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream"));
 
-	vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("createConsumerTransport"), obj, [this](auto response) {
-		auto m = response[0]->AsObject();
-		FString errorMsg;
-
-		if (m->TryGetStringField(TEXT("error"), errorMsg))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Server failed to create consumer transport: %s"), *errorMsg);
-
-		}
-		else
-		{
-			UE_LOG(LogTemp, Log, TEXT("Server created consumer transport. Reply %s"),
-				*USIOJConvert::ToJsonString(m));
-
-			nlohmann::json consumerData = fromFJsonObject(m);
-			recvTransport_ = getDevice().CreateRecvTransport(this,
-				consumerData["id"].get<std::string>(),
-				consumerData["iceParameters"],
-				consumerData["iceCandidates"],
-				consumerData["dtlsParameters"]);
-
-			stream_ = getWebRtcFactory()->CreateLocalMediaStream(consumerData["id"].get<std::string>()); // UVideoCoreMediaReceiver::generateUUID());
-
-			OnTransportReady.Broadcast();
-		}
-	});
+	stream_ = getWebRtcFactory()->CreateLocalMediaStream(vcComponent_->getRecvTransport()->GetId());
 }
 
 void
@@ -320,7 +292,7 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t, const string
 				ANSI_TO_TCHAR(kind.c_str()),
 				ANSI_TO_TCHAR(producerId.c_str()));
 
-			consumer = recvTransport_->Consume(this,
+			consumer = vcComponent_->getRecvTransport()->Consume(this,
 				producerId,
 				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("producerId")))),
 				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("kind")))),
@@ -489,55 +461,12 @@ UVideoCoreMediaReceiver::shutdown()
 		audioConsumer_->Close();
 		delete audioConsumer_;
 	}
-	if (recvTransport_)
-	{
-		recvTransport_->Close();
-		delete recvTransport_;
-	}
 
 	if (frameBgraBuffer_)
 	{
 		free(frameBgraBuffer_);
 		bufferSize_ = 0;
 	}
-}
-
-std::future<void>
-UVideoCoreMediaReceiver::OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters)
-{
-	UE_LOG(LogTemp, Log, TEXT("Transport OnConnect"));
-
-	std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
-
-	nlohmann::json m = {
-		{"transportId", },
-		{"dtlsParameters", dtlsParameters} };
-
-	auto obj = USIOJConvert::MakeJsonObject();
-	obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
-	obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
-
-	vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("connectConsumerTransport"), obj, [promise](auto response) {
-		if (response.Num())
-		{
-			auto m = response[0]->AsObject();
-			UE_LOG(LogTemp, Log, TEXT("connectConsumerTransport reply %s"), *USIOJConvert::ToJsonString(m));
-		}
-	});
-
-	promise->set_value();
-	return promise->get_future();
-}
-
-void
-UVideoCoreMediaReceiver::OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& connectionState)
-{
-	FString str(connectionState.c_str());
-	UE_LOG(LogTemp, Log, TEXT("Transport connection state change %s"), *str);
-
-	if (connectionState == "connected")
-		vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("resume"), nullptr, [](auto response) {
-	});
 }
 
 void

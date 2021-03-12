@@ -100,9 +100,12 @@ void videocore::ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)>
 {
 	FScopeLock Lock(&deviceSync);
 
-	OnDeviceLoaded.AddLambda([cb]() {
+	if (device.IsLoaded())
 		cb(device);
-	});
+	else
+		OnDeviceLoaded.AddLambda([cb]() {
+			cb(device);
+		});
 }
 
 // ****

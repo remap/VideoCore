@@ -73,14 +73,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverClientStateCh
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, FString, Kind);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStopped, FString, ProducerId, FString, Reason);
 
-DECLARE_MULTICAST_DELEGATE(FVideoCoreMediaReceiverTransportReady);
-
 /**
  * Media source used for rendering incoming WebRTC media track. Can render one video and one audio track only.
  */
 UCLASS(BlueprintType, Blueprintable, HideCategories = ("Platforms"), Category = "VideoCore IO", HideCategories = ("Information"), META = (DisplayName = "VideoCoreRTC Media Receiver"))
 class VIDEOCORERTC_API UVideoCoreMediaReceiver : public UBaseMediaSource
-	, public mediasoupclient::Transport::Listener
 	, public mediasoupclient::Consumer::Listener
 	, public rtc::VideoSinkInterface<webrtc::VideoFrame>
 	, public webrtc::AudioTrackSinkInterface
@@ -168,20 +165,14 @@ private: // UE
 	UVideoCoreSoundWave* soundWave_;
 
 	TArray<FDelegateHandle> callbackHandles_;
-	FVideoCoreMediaReceiverTransportReady OnTransportReady;
+	// TODO: rename into remoteClientState_
 	EClientState clientState_;
 
 private: // native
 
 	void setupSocketCallbacks();
-	void setupConsumer();
+	void createStream();
 	void consume(mediasoupclient::RecvTransport* t, const std::string& streamId);
-
-	// mediasoupclient::Transport::Listener interface
-	std::future<void> OnConnect(
-		mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters) override;
-	void OnConnectionStateChange(
-		mediasoupclient::Transport* transport, const std::string& connectionState) override;
 
 	// mediasoupclient::Consumer::Listener interface
 	void OnTransportClose(mediasoupclient::Consumer* consumer) override;
@@ -194,7 +185,6 @@ private: // native
 		size_t number_of_frames);
 
 	// rtc objects
-	mediasoupclient::RecvTransport* recvTransport_;
 	mediasoupclient::Consumer* videoConsumer_;
 	mediasoupclient::Consumer* audioConsumer_;
 
