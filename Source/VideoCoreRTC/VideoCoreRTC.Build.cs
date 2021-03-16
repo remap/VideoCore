@@ -27,7 +27,7 @@ public class VideoCoreRTC : ModuleRules
 		bEnableExceptions = true;
 		bUseRTTI = true;
 		UnsafeTypeCastWarningLevel = WarningLevel.Off;
-
+        
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(
@@ -38,10 +38,6 @@ public class VideoCoreRTC : ModuleRules
 				"VideoCore",
 				"DDBase",
 				"DDLog",
-				"SocketIOClient", 
-				"SocketIOLib", 
-				"Json", 
-				"SIOJson",	
 				"CoreUtility"
 				// ... add other public dependencies that you statically link with here ...
 			}
@@ -57,7 +53,11 @@ public class VideoCoreRTC : ModuleRules
                 "Slate",
 				"SlateCore",
 				"Media",
-				"MediaAssets"
+				"MediaAssets",
+                "SocketIOClient",
+                "SocketIOLib",
+                "Json",
+                "SIOJson"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
