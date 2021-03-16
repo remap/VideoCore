@@ -41,12 +41,18 @@ void UVideoCoreSignalingComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
-// TODO: add destroy call
-//if (recvTransport_)
-//{
-//	recvTransport_->Close();
-//	delete recvTransport_;
-//}
+
+void UVideoCoreSignalingComponent::BeginDestroy()
+{
+	if (recvTransport_)
+	{
+		recvTransport_->Close();
+		delete recvTransport_;
+	}
+
+	// Call the base implementation of 'BeginDestroy'
+	Super::BeginDestroy();
+}
 
 void UVideoCoreSignalingComponent::connect(FString url, FString path)
 {

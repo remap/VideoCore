@@ -80,6 +80,7 @@ protected:
 	virtual void InitializeComponent() override;
 	// Called when the game starts
 	virtual void BeginPlay() override;
+	void BeginDestroy() override;
 
 public:	// native
 	mediasoupclient::RecvTransport* getRecvTransport() const { return recvTransport_; }

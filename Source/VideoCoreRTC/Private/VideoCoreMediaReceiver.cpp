@@ -429,35 +429,41 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind)
 void
 UVideoCoreMediaReceiver::shutdown()
 {
-	FScopeLock RenderLock(&renderSyncContext_);
-	FScopeLock AudioLock(&audioSyncContext_);
-
 	if (stream_)
 	{
-		for (auto t : stream_->GetVideoTracks())
 		{
-			t->set_enabled(false);
-			t->RemoveSink(this);
-			stream_->RemoveTrack(t);
+			FScopeLock RenderLock(&renderSyncContext_);
+			for (auto t : stream_->GetVideoTracks())
+			{
+				t->set_enabled(false);
+				t->RemoveSink(this);
+				stream_->RemoveTrack(t);
+			}
 		}
 
-		for (auto t : stream_->GetAudioTracks())
 		{
-			t->set_enabled(false);
-			t->RemoveSink(this);
+			// don't sync on mutex because audio streams have their own locks (unlike video)
+			//FScopeLock AudioLock(&audioSyncContext_);
+			for (auto t : stream_->GetAudioTracks())
+			{
+				t->set_enabled(false);
+				t->RemoveSink(this);
 
-			stream_->RemoveTrack(t);
+				stream_->RemoveTrack(t);
+			}
 		}
 	}
 
 	// TODO: notify server we're closing transport and consumer
 	if (videoConsumer_)
 	{
+		FScopeLock RenderLock(&renderSyncContext_);
 		videoConsumer_->Close();
 		delete videoConsumer_;
 	}
 	if (audioConsumer_)
 	{
+		FScopeLock AudioLock(&audioSyncContext_);
 		audioConsumer_->Close();
 		delete audioConsumer_;
 	}
