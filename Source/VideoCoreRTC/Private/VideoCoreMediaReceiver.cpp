@@ -214,13 +214,6 @@ void UVideoCoreMediaReceiver::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-string UVideoCoreMediaReceiver::generateUUID()
-{
-	FGuid guid = FGuid::NewGuid();
-
-	return TCHAR_TO_ANSI(*guid.ToString());
-}
-
 // ****
 void UVideoCoreMediaReceiver::setupSocketCallbacks()
 {
@@ -435,6 +428,7 @@ UVideoCoreMediaReceiver::shutdown()
 			FScopeLock RenderLock(&renderSyncContext_);
 			for (auto t : stream_->GetVideoTracks())
 			{
+				// TODO: do need to disable track ?
 				t->set_enabled(false);
 				t->RemoveSink(this);
 				stream_->RemoveTrack(t);

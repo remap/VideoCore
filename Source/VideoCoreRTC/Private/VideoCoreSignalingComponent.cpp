@@ -87,9 +87,33 @@ void UVideoCoreSignalingComponent::invokeWhenRecvTransportReady(function<void(co
 	if (recvTransport_)
 		cb(recvTransport_);
 	else
-		onTransportReady_.AddLambda([cb, this](FString tId) {
-			cb(this->getRecvTransport());
+		onTransportReady_.AddLambda([cb, this](FString tId, FString type) {
+			if (type.Equals("recv"))
+			{
+				cb(this->getRecvTransport());
+			}
 		});
+}
+
+void UVideoCoreSignalingComponent::invokeWhenSendTransportReady(function<void(const mediasoupclient::SendTransport*)> cb)
+{
+	if (sendTransport_)
+		cb(sendTransport_);
+	else
+		onTransportReady_.AddLambda([cb, this](FString tId, FString type) {
+			if (type.Equals("send"))
+			{
+				cb(this->getSendTransport());
+			}
+		});
+}
+
+void UVideoCoreSignalingComponent::invokeOnTransportProduce(std::string trackId, OnTransportProduce cb)
+{
+	if (transportProduceCb_.find(trackId) != transportProduceCb_.end())
+		throw runtime_error("Callback for track already exists: " + trackId);
+
+	transportProduceCb_[trackId] = cb;
 }
 
 void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
@@ -136,7 +160,7 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 	});
 }
 
-void UVideoCoreSignalingComponent::setupConsumerTransport()
+void UVideoCoreSignalingComponent::setupConsumerTransport(mediasoupclient::Device& d)
 {
 	auto obj = USIOJConvert::MakeJsonObject();
 	obj->SetBoolField(TEXT("forceTcp"), false);
@@ -148,7 +172,7 @@ void UVideoCoreSignalingComponent::setupConsumerTransport()
 		if (m->TryGetStringField(TEXT("error"), errorMsg))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Server failed to create consumer transport: %s"), *errorMsg);
-
+			// TODO: callback
 		}
 		else
 		{
@@ -162,14 +186,45 @@ void UVideoCoreSignalingComponent::setupConsumerTransport()
 				consumerData["iceCandidates"],
 				consumerData["dtlsParameters"]);
 
-			onTransportReady_.Broadcast(FString(consumerData["id"].get<std::string>().c_str()));
+			if (recvTransport_)
+				onTransportReady_.Broadcast(FString(recvTransport_->GetId().c_str()), TEXT("recv"));
 		}
 	});
 }
 
-void UVideoCoreSignalingComponent::setupProducerTransport()
+void UVideoCoreSignalingComponent::setupProducerTransport(mediasoupclient::Device& d)
 {
+	nlohmann::json body =
+	{
+		{ "forceTcp", false },
+		{ "rtpCapabilities", getDevice().GetRtpCapabilities() }
+	};
 
+	sIOClientComponent_->EmitNative(TEXT("createProducerTransport"), fromJsonObject(body), [this](auto response) {
+		auto m = response[0]->AsObject();
+		FString errorMsg;
+
+		if (m->TryGetStringField(TEXT("error"), errorMsg))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Server failed to create producer transport: %s"), *errorMsg);
+			// TODO: callback
+		}
+		else
+		{
+			UE_LOG(LogTemp, Log, TEXT("Server created producer transport. Reply %s"),
+				*USIOJConvert::ToJsonString(m));
+
+			nlohmann::json producerData = fromFJsonObject(m);
+			sendTransport_ = getDevice().CreateSendTransport(this,
+				producerData["id"].get<string>(),
+				producerData["iceParameters"],
+				producerData["iceCandidates"],
+				producerData["dtlsParameters"]);
+
+			if (sendTransport_)
+				onTransportReady_.Broadcast(FString(sendTransport_->GetId().c_str()), TEXT("send"));
+		}
+	});
 }
 
 std::future<void>
@@ -179,22 +234,28 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 
 	std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
 
-	nlohmann::json m = {
-		{"transportId", },
-		{"dtlsParameters", dtlsParameters} };
+	if (!(getRecvTransport() || getSendTransport()))
+	{
+		promise->set_exception(make_exception_ptr("Unknown transport trying to connect"));
+	}
+	else
+	{
+		auto obj = USIOJConvert::MakeJsonObject();
+		obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
+		obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
 
-	auto obj = USIOJConvert::MakeJsonObject();
-	obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
-	obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
+		FString emit = (getRecvTransport() ? TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
 
-	sIOClientComponent_->EmitNative(TEXT("connectConsumerTransport"), obj, [promise](auto response) {
-		if (response.Num())
-		{
-			auto m = response[0]->AsObject();
-			UE_LOG(LogTemp, Log, TEXT("connectConsumerTransport reply %s"), *USIOJConvert::ToJsonString(m));
-		}
-	});
+		sIOClientComponent_->EmitNative(emit, obj, [promise](auto response) {
+			if (response.Num())
+			{
+				auto m = response[0]->AsObject();
+				UE_LOG(LogTemp, Log, TEXT("connect transport reply %s"), *USIOJConvert::ToJsonString(m));
+			}
+		});
+	}
 
+	// TODO: shall this be inside the lambda above?
 	promise->set_value();
 	return promise->get_future();
 }
@@ -207,8 +268,41 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 
 	if (connectionState == "connected")
 		// TODO: replace with mcast delegate
-		sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {
+		if (transport == getSendTransport())
+			sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {
 	});
+}
+
+std::future<std::string> 
+UVideoCoreSignalingComponent::OnProduce(mediasoupclient::SendTransport* t, const std::string& kind,
+	nlohmann::json rtpParameters, const nlohmann::json& appData)
+{
+	if (appData.contains("trackId"))
+	{
+		map<string, OnTransportProduce>::iterator it = transportProduceCb_.find(appData["trackId"]);
+		if (it != transportProduceCb_.end())
+		{
+			return it->second(t, kind, rtpParameters, appData);
+		}
+	}
+
+	std::shared_ptr<std::promise<string>> promise = std::make_shared<std::promise<string>>();
+
+	promise->set_exception(make_exception_ptr("produce unknown track"));
+
+	return promise->get_future();
+}
+
+std::future<std::string> 
+UVideoCoreSignalingComponent::OnProduceData(mediasoupclient::SendTransport*,
+	const nlohmann::json& sctpStreamParameters, const std::string& label, const std::string& protocol,
+	const nlohmann::json& appData)
+{
+	std::shared_ptr<std::promise<string>> promise = std::make_shared<std::promise<string>>();
+
+	promise->set_exception(make_exception_ptr("not implemented"));
+
+	return promise->get_future();
 }
 
 void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool bIsReconnection)
@@ -239,9 +333,9 @@ void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool b
 			}
 
 			// TODO: add err callback if device can't be loaded
-			videocore::ensureDeviceLoaded([this](mediasoupclient::Device&) {
-				setupConsumerTransport();
-				//setupProducerTransport();
+			videocore::ensureDeviceLoaded([this](mediasoupclient::Device& d) {
+				setupConsumerTransport(d);
+				setupProducerTransport(d);
 			});
 		});
 	}

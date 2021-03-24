@@ -108,6 +108,13 @@ void videocore::ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)>
 		});
 }
 
+std::string videocore::generateUUID()
+{
+	FGuid guid = FGuid::NewGuid();
+
+	return TCHAR_TO_ANSI(*guid.ToString());
+}
+
 // ****
 void createWebRtcFactory()
 {
