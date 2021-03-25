@@ -244,7 +244,8 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 		obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
 		obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
 
-		FString emit = (getRecvTransport() ? TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
+		FString emit = (getRecvTransport() && getRecvTransport()->GetId() == transport->GetId() ? 
+			TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
 
 		sIOClientComponent_->EmitNative(emit, obj, [promise](auto response) {
 			if (response.Num())

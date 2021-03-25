@@ -12,6 +12,7 @@
 #include "rtc_base/atomic_ops.h"
 #include "third_party/libyuv/include/libyuv.h"
 #include "common_video/include/video_frame_buffer.h"
+#include "api/video/i420_buffer.h"
 
 using namespace std;
 using namespace videocore;
@@ -24,15 +25,9 @@ namespace videocore
 	{
 	public:
 		RenderTargetVideoTrackSource() :
-			state_(webrtc::MediaSourceInterface::SourceState::kInitializing)
+			state_(webrtc::MediaSourceInterface::SourceState::kLive)
 			, width_(1920)
 			, height_(1080)
-			, yBuffer_(nullptr)
-			, yStride_(0)
-			, uBuffer_(nullptr)
-			, uStride_(0)
-			, vBuffer_(nullptr)
-			, vStride_(0)
 			, captureIdx_(0)
 			, publishIdx_(0)
 		{
@@ -56,9 +51,10 @@ namespace videocore
 			if (lock)
 			{
 				libyuv::ARGBToI420(argbData,
-					4 * width_, yBuffer_, yStride_,
-					uBuffer_, uStride_,
-					vBuffer_, vStride_,
+					4 * width_, 
+					i420Buffer_->MutableDataY(), i420Buffer_->StrideY(),
+					i420Buffer_->MutableDataU(), i420Buffer_->StrideU(),
+					i420Buffer_->MutableDataV(), i420Buffer_->StrideV(),
 					width_, height_);
 
 				lastCapture_ = tc;
@@ -74,16 +70,12 @@ namespace videocore
 			if (captureIdx_ > 0 &&
 				lastPublish_ != lastCapture_)
 			{
-				auto n = chrono::high_resolution_clock::now();
-				int64_t uts = chrono::duration_cast<chrono::microseconds>(n.time_since_epoch()).count();
+				auto n = chrono::high_resolution_clock::now().time_since_epoch();
+				int64_t uts = chrono::duration_cast<chrono::microseconds>(n).count();
 
 				frameBuilder_.set_id(publishIdx_)
 					.set_timestamp_us(uts)
-					.set_video_frame_buffer(webrtc::WrapI420Buffer(width_, height_,
-						yBuffer_, yStride_,
-						uBuffer_, uStride_,
-						vBuffer_, vStride_,
-						rtc::Callback0<void>()));
+					.set_video_frame_buffer(i420Buffer_);
 				
 				OnFrame(frameBuilder_.build());
 
@@ -130,8 +122,7 @@ namespace videocore
 		mutex captureSync_;
 
 		int width_, height_;
-		// I420 buffer data
-		uint8_t* yBuffer_, yStride_, * uBuffer_, uStride_, * vBuffer_, vStride_;
+		rtc::scoped_refptr<webrtc::I420Buffer> i420Buffer_;
 
 		webrtc::MediaSourceInterface::SourceState state_;
 		mutable volatile int ref_count_;
@@ -140,20 +131,7 @@ namespace videocore
 		{
 			lock_guard<mutex> lock(captureSync_);
 
-			if (yBuffer_) free(yBuffer_);
-			yBuffer_ = (uint8_t*)malloc(width_ * height_);
-			yStride_ = width_;
-
-			int halfW = width_ / 2; 
-			int halfH = height_ / 2;
-			
-			if (uBuffer_) free(uBuffer_);
-			uBuffer_ = (uint8_t*)malloc(halfW * halfH);
-			uStride_ = halfW;
-
-			if (vBuffer_) free(vBuffer_);
-			vBuffer_ = (uint8_t*)malloc(halfW * halfH);
-			vStride_ = halfW;
+			i420Buffer_ = webrtc::I420Buffer::Create(width_, height_);
 		}
 	};
 }
@@ -309,8 +287,12 @@ void UVideoCoreMediaSender::createStream()
 
 void UVideoCoreMediaSender::createVideoTrack(string tId)
 {
-	videoTrack_ = getWebRtcFactory()->CreateVideoTrack(tId, videoSource_.get());
-
+	if (videoSource_)
+	{
+		videoTrack_ = getWebRtcFactory()->CreateVideoTrack(tId, videoSource_.get());
+		stream_->AddTrack(videoTrack_);
+	}
+	
 	if (vcComponent_ && vcComponent_->GetWorld())
 	{
 		vcComponent_->GetWorld()->GetTimerManager().ClearTimer(captureHandle_);
@@ -380,6 +362,7 @@ void UVideoCoreMediaSender::createProducer()
 			this->videoProducer_ = vcComponent_->getSendTransport()->Produce(this, videoTrack_, &encodings, nullptr,
 				{ { "trackId", videoTrack_->id() } });
 			isProducingVideo_ = true;
+			videoTrack_->set_enabled(true);
 		});	
 	}
 }
