@@ -18,9 +18,11 @@
 
 #include "VideoCoreSignalingComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSignalingConnected, USIOJsonObject*, RouterCaps);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FVideoCoreRtcSignalingConnected);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSignalingFailure, FString, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSignallingDisconnected, FString, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSubsystemInitialized, USIOJsonObject*, MyCaps);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSubsystemFailedToInit, FString, Reason);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcNewClient, FString, ClientName, FString, ClientId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcClientLeft, FString, ClientId);
@@ -55,10 +57,16 @@ public:
 	FVideoCoreRtcSignalingConnected OnRtcSignalingConnected;
 
 	UPROPERTY(BlueprintAssignable)
+	FVideoCoreRtcSignalingFailure OnRtcSignalingFailure;
+
+	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcSignallingDisconnected OnRtcSiganlingDisconnected;
 
 	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcSubsystemInitialized OnRtcSubsystemInitialized;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreRtcSubsystemFailedToInit OnRtcSubsystemFailed;
 
 	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcNewClient OnNewClientConnected;
@@ -102,6 +110,8 @@ private: // UE
 	void onConnectedToServer(FString SessionId, bool bIsReconnection);
 	UFUNCTION()
 	void onDisconnected(TEnumAsByte<ESIOConnectionCloseReason> Reason);
+	UFUNCTION()
+	void onNamespaceDisconnected(FString nspc);
 
 	FVideoCoreMediaReceiverTransportReady onTransportReady_;
 
@@ -124,6 +134,9 @@ private: // native
 		const nlohmann::json& appData) override;
 
 	void setupVideoCoreServerCallbacks();
+	void initRtcSubsystem();
 	void setupConsumerTransport(mediasoupclient::Device&);
 	void setupProducerTransport(mediasoupclient::Device&);
+	template<typename T>
+	void cleanupTransport(T*& t);
 };

@@ -120,6 +120,7 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 {
 	sIOClientComponent_->OnConnected.AddDynamic(this, &UVideoCoreSignalingComponent::onConnectedToServer);
 	sIOClientComponent_->OnDisconnected.AddDynamic(this, &UVideoCoreSignalingComponent::onDisconnected);
+	sIOClientComponent_->OnSocketNamespaceDisconnected.AddDynamic(this, &UVideoCoreSignalingComponent::onNamespaceDisconnected);
 	
 	sIOClientComponent_->OnNativeEvent(TEXT("newClient"), [&](const FString&, const TSharedPtr<FJsonValue>& data) {
 		auto m = data->AsObject();
@@ -157,6 +158,65 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 
 		this->clientName = m->GetStringField(TEXT("name"));
 		this->clientId = m->GetStringField(TEXT("id"));
+
+		this->initRtcSubsystem();
+	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("forbidden"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
+		auto m = response->AsObject();
+
+		if (m->HasField("error"))
+		{
+			OnRtcSignalingFailure.Broadcast(m->GetStringField("error"));
+		}
+		else
+			OnRtcSignalingFailure.Broadcast("Unknown");
+	});
+}
+
+void UVideoCoreSignalingComponent::initRtcSubsystem()
+{
+	// check for old transport
+	if (recvTransport_)
+		cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+	if (sendTransport_)
+		cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+
+	sIOClientComponent_->EmitNative(TEXT("getRouterRtpCapabilities"), nullptr,
+		[this](auto response) {
+		auto m = response[0]->AsObject();
+
+		UE_LOG(LogTemp, Log, TEXT("GOT ROUTER CAPABILITIES %s"), *USIOJConvert::ToJsonString(m));
+
+		if (!videocore::getDevice().IsLoaded())
+		{
+			videocore::loadMediaSoupDevice(response[0]);
+
+			if (videocore::getDevice().IsLoaded())
+			{
+				USIOJsonObject* uobj = USIOJsonObject::ConstructJsonObject(this);
+				USIOJsonValue* caps = USIOJsonValue::ConstructJsonValue(this,
+					videocore::fromJsonObject(videocore::getDevice().GetRtpCapabilities()));
+				uobj->SetField(TEXT("rtpCapabilities"), caps);
+
+				OnRtcSubsystemInitialized.Broadcast(uobj);
+			}
+			else
+			{
+				OnRtcSubsystemFailed.Broadcast("Failed to load mediasoupclient Device");
+			}
+		}
+
+		videocore::ensureDeviceLoaded(
+			[this](mediasoupclient::Device& d)
+		{
+			setupConsumerTransport(d);
+			setupProducerTransport(d);
+		},
+			[this](string reason)
+		{
+			OnRtcSubsystemFailed.Broadcast(reason.c_str());
+		});
 	});
 }
 
@@ -227,6 +287,23 @@ void UVideoCoreSignalingComponent::setupProducerTransport(mediasoupclient::Devic
 	});
 }
 
+template<typename T>
+void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
+{
+	if (t)
+	{
+		if (!t->IsClosed())
+		{
+			UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
+			t->Close(); // this should trigger OnTransportClose for all producers/consumers
+		}
+
+		// we don't free transport because we don't own it, just nullify
+		// (it is created by the mediasoupclient::Device object)
+		t = nullptr;
+	}
+}
+
 std::future<void>
 UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters)
 {
@@ -243,7 +320,7 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 		auto obj = USIOJConvert::MakeJsonObject();
 		obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
 		obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
-
+		// TODO: call this in bg thread and return future
 		FString emit = (getRecvTransport() && getRecvTransport()->GetId() == transport->GetId() ? 
 			TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
 
@@ -264,14 +341,25 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 void
 UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport* transport, const std::string& connectionState)
 {
+	// possible states:
+	//	closed
+	//	failed
+	//	disonnected
+	//	new
+	//	connecting
+	//	connected
+	//	checking
+	//	completed
+
+	// TODO: handle failed/closed states
+
 	FString str(connectionState.c_str());
 	UE_LOG(LogTemp, Log, TEXT("Transport connection state change %s"), *str);
 
 	if (connectionState == "connected")
 		// TODO: replace with mcast delegate
 		if (transport == getSendTransport())
-			sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {
-	});
+			sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
 }
 
 std::future<std::string> 
@@ -308,38 +396,8 @@ UVideoCoreSignalingComponent::OnProduceData(mediasoupclient::SendTransport*,
 
 void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool bIsReconnection)
 {
-	UE_LOG(LogTemp, Log, TEXT("onConnectedToServer called"));
-	if (!bIsReconnection)
-	{
-		UE_LOG(LogTemp, Log, TEXT("VideoCore media server connected"));
-
-		sIOClientComponent_->EmitNative(TEXT("getRouterRtpCapabilities"), nullptr, [this](auto response) {
-			auto m = response[0]->AsObject();
-
-			{
-				UE_LOG(LogTemp, Log, TEXT("GOT ROUTER CAPABILITIES %s"), *USIOJConvert::ToJsonString(m));
-				USIOJsonObject* uobj = USIOJsonObject::ConstructJsonObject(this);
-				uobj->SetRootObject(m);
-				OnRtcSignalingConnected.Broadcast(uobj);
-			}
-
-			videocore::loadMediaSoupDevice(response[0]);
-
-			{
-				USIOJsonObject* uobj = USIOJsonObject::ConstructJsonObject(this);
-				USIOJsonValue* caps = USIOJsonValue::ConstructJsonValue(this,
-					videocore::fromJsonObject(videocore::getDevice().GetRtpCapabilities()));
-				uobj->SetField(TEXT("rtpCapabilities"), caps);
-				OnRtcSubsystemInitialized.Broadcast(uobj);
-			}
-
-			// TODO: add err callback if device can't be loaded
-			videocore::ensureDeviceLoaded([this](mediasoupclient::Device& d) {
-				setupConsumerTransport(d);
-				setupProducerTransport(d);
-			});
-		});
-	}
+	UE_LOG(LogTemp, Log, TEXT("VideoCore media server connected. Is Reconnect: %d"), bIsReconnection);
+	OnRtcSignalingConnected.Broadcast();
 }
 
 void UVideoCoreSignalingComponent::onDisconnected(TEnumAsByte<ESIOConnectionCloseReason> Reason)
@@ -347,5 +405,18 @@ void UVideoCoreSignalingComponent::onDisconnected(TEnumAsByte<ESIOConnectionClos
 	UE_LOG(LogTemp, Warning, TEXT("VideoCore mediaserver disconnected. Reason: %s"),
 		(Reason == CLOSE_REASON_NORMAL ? "NORMAL" : "DROP"));
 
+	cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+	cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+
 	OnRtcSiganlingDisconnected.Broadcast((Reason == CLOSE_REASON_NORMAL ? "NORMAL" : "DROP"));
+}
+
+void UVideoCoreSignalingComponent::onNamespaceDisconnected(FString nmspc)
+{
+	UE_LOG(LogTemp, Log, TEXT("Namespace disconnected: %s"), *nmspc);
+
+	cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+	cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+
+	OnRtcSiganlingDisconnected.Broadcast("Server disonnect");
 }

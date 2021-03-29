@@ -33,7 +33,8 @@ namespace videocore
 	// once successfully connected to media server and fetched RTP capabilities
 	// since different media streamin actors can access device at will, this function
 	// ensures that the callback is executed only when device has been successfully loaded
-	void ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb);
+	void ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb,
+		std::function<void(std::string reason)> errCb = {});
 
 	std::string generateUUID();
 }

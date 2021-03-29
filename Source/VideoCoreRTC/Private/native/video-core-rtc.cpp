@@ -24,7 +24,9 @@ static rtc::Thread* signalingThread;
 static rtc::Thread* workerThread;
 
 DECLARE_MULTICAST_DELEGATE(FVideoCoreRtcOnDeviceLoaded);
+DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcOnDeviceLoadFailed, FString);
 static FVideoCoreRtcOnDeviceLoaded OnDeviceLoaded;
+static FVideoCoreRtcOnDeviceLoadFailed OnDeviceLoadFailed;
 static FCriticalSection deviceSync;
 static mediasoupclient::Device device;
 
@@ -86,6 +88,13 @@ void videocore::loadMediaSoupDevice(TSharedPtr<FJsonValue> rtpCapabilities)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Caught exception trying to load mediasoup device: %s"),
 			ANSI_TO_TCHAR(e.what()));
+
+		if (!device.IsLoaded())
+		{
+			FScopeLock Lock(&deviceSync);
+			OnDeviceLoadFailed.Broadcast(ANSI_TO_TCHAR(e.what()));
+			OnDeviceLoadFailed.Clear();
+		}
 	}
 
 	if (device.IsLoaded())
@@ -96,16 +105,23 @@ void videocore::loadMediaSoupDevice(TSharedPtr<FJsonValue> rtpCapabilities)
 	}
 }
 
-void videocore::ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb)
+void videocore::ensureDeviceLoaded(std::function<void(mediasoupclient::Device&)> cb, 
+	std::function<void(std::string reason)> errCb)
 {
 	FScopeLock Lock(&deviceSync);
 
 	if (device.IsLoaded())
 		cb(device);
 	else
+	{
 		OnDeviceLoaded.AddLambda([cb]() {
 			cb(device);
 		});
+		if (errCb)
+			OnDeviceLoadFailed.AddLambda([errCb](FString reason) {
+				errCb(std::string(TCHAR_TO_ANSI(*reason)));
+			});
+	}
 }
 
 std::string videocore::generateUUID()
