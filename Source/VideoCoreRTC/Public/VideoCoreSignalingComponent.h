@@ -29,7 +29,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcClientLeft, FString, Cl
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewClient, FString, FString);
 DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcInternalClientLeft, FString);
-DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewProducer, FString, FString);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FVideoCoreRtcInternalNewProducer, FString, FString, FString);
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverTransportReady, FString, FString);
 

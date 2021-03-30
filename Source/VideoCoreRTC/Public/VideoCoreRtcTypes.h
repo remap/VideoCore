@@ -19,8 +19,10 @@ enum class EClientState : uint8 {
 
 UENUM(BlueprintType)
 enum class EMediaTrackKind : uint8 {
+	Unknown UMETA(DisplayName = "Unknown"),
 	Audio UMETA(DisplayName = "Audio"),
-	Video UMETA(DisplayName = "Video")
+	Video UMETA(DisplayName = "Video"),
+	Data UMETA(DisplayName = "Data")
 };
 
 UENUM(BlueprintType)

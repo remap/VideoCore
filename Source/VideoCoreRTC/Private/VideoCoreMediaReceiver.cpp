@@ -31,7 +31,7 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, frameHeight_(0)
 	, frameBgraBuffer_(nullptr)
 	, videoTexture_(nullptr)
-	, clientState_(EClientState::Offline)
+	, remoteClientState_(EClientState::Offline)
 	, stream_(nullptr)
 	, audioConsumer_(nullptr)
 	, videoConsumer_(nullptr)
@@ -65,6 +65,9 @@ void UVideoCoreMediaReceiver::Init(UVideoCoreSignalingComponent* vcSiganlingComp
 
 void UVideoCoreMediaReceiver::Consume(FString clientId)
 {
+	if (audioConsumer_ || videoConsumer_)
+		Stop();
+
 	this->clientId = clientId;
 
 	auto obj = USIOJConvert::MakeJsonObject();
@@ -78,18 +81,24 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 		if (m->HasField(this->clientId))
 		{
 			bool consumeVideo = false, consumeAudio = false;
+			FString videoToFetch = videoStreamIdFilter_.IsEmpty() ? "" : videoStreamIdFilter_;
+			FString audioToFetch = audioStreamIdFilter_.IsEmpty() ? "" : audioStreamIdFilter_;
+
 			for (auto d : m->GetArrayField(this->clientId))
 			{
 				auto obj = d->AsObject();
-				// TODO: check if already streaming video and reset
-				if (obj->GetStringField("kind").Equals("video") && !consumeVideo)
+				auto sId = obj->GetStringField("id");
+
+				if (obj->GetStringField("kind").Equals("video") && !consumeVideo &&
+					(videoToFetch.IsEmpty() || videoToFetch.Equals(sId)))
 				{
-					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*obj->GetStringField("id")));
+					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*sId));
 					consumeVideo = true;
 				}
-				if (obj->GetStringField("kind").Equals("audio") && !consumeAudio)
+				if (obj->GetStringField("kind").Equals("audio") && !consumeAudio &&
+					(audioToFetch.IsEmpty() || audioToFetch.Equals(sId)))
 				{
-					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*obj->GetStringField("id")));
+					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*sId));
 					consumeAudio = true;
 				}
 			}
@@ -203,6 +212,26 @@ FVideoCoreMediaStreamStatistics UVideoCoreMediaReceiver::getStats() const
 	return stats;
 }
 
+FString UVideoCoreMediaReceiver::GetVideoProducerId() const
+{
+	return videoProducerId;
+}
+
+FString UVideoCoreMediaReceiver::GetAudioProducerId() const
+{
+	return audioProducerId;
+}
+
+void UVideoCoreMediaReceiver::SetVideoStreamFilter(FString videoStreamId)
+{
+	videoStreamIdFilter_ = videoStreamId;
+}
+
+void UVideoCoreMediaReceiver::SetAudioStreamFilter(FString audioStreamId)
+{
+	audioStreamIdFilter_ = audioStreamId;
+}
+
 void UVideoCoreMediaReceiver::BeginDestroy()
 {
 	shutdown();
@@ -231,21 +260,23 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 	{
 		if (this->clientId.Equals(clientId))
 		{
-			stopStreaming("audio");
-			stopStreaming("video");
+			stopStreaming("audio", "client left");
+			stopStreaming("video", "client left");
 			setState(EClientState::Offline);
 		}
 	});
 	callbackHandles_.Add(hndl);
 
 	hndl =
-	vcComponent_->onNewProducer_.AddLambda([&](FString clientId, FString producerId) 
+	vcComponent_->onNewProducer_.AddLambda([&](FString clientId, FString producerId, FString kind) 
 	{
-		if (!this->clientId.IsEmpty() && this->clientId == clientId && this->AutoConsume)
+		if (this->AutoConsume && isTargetProducer(clientId, producerId, kind))
 		{ // our client, started producing media
 			UE_LOG(LogTemp, Log, TEXT("new producer %s %s"), *clientId, *producerId);
 			setState(EClientState::Producing);
-			consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*producerId));
+
+			if (canConsume(kind))
+				consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*producerId));
 		}
 	});
 	callbackHandles_.Add(hndl);
@@ -254,6 +285,7 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 void UVideoCoreMediaReceiver::createStream()
 {
 	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream"));
+	assert(!stream_);
 
 	stream_ = getWebRtcFactory()->CreateLocalMediaStream(vcComponent_->getRecvTransport()->GetId());
 }
@@ -293,13 +325,14 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t, const string
 			);
 
 			setupConsumerTrack(consumer);
+			resumeTrack(consumer);
 		}
 		else
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Can not consume stream %s (client %s): %s"),
 				ANSI_TO_TCHAR(streamId.c_str()), *this->clientId, *m->GetStringField("error"));
 			
-			OnStreamingStopped.Broadcast(FString(streamId.c_str()), m->GetStringField("error"));
+			OnStreamingStopped.Broadcast(FString(streamId.c_str()), EMediaTrackKind::Unknown, m->GetStringField("error"));
 		}
 	});
 }
@@ -308,52 +341,55 @@ void
 UVideoCoreMediaReceiver::setupConsumerTrack(mediasoupclient::Consumer* consumer)
 {
 	assert(consumer);
+	assert(stream_);
 
-	if (stream_)
+	if (consumer->GetKind() == "video")
 	{
-		if (consumer->GetKind() == "video")
-		{
-			framesReceived_ = 0;
-			stream_->AddTrack((webrtc::VideoTrackInterface*)consumer->GetTrack());
+		framesReceived_ = 0;
+		stream_->AddTrack((webrtc::VideoTrackInterface*)consumer->GetTrack());
 
-			rtc::VideoSinkWants sinkWants;
-			// TODO: use these for downgrading/upgrading the resolution
-			//sinkWants.max_pixel_count
-			//sinkWants.target_pixel_count
-			((webrtc::VideoTrackInterface*)consumer->GetTrack())->AddOrUpdateSink(this, sinkWants);
+		rtc::VideoSinkWants sinkWants;
+		// TODO: use these for downgrading/upgrading the resolution
+		//sinkWants.max_pixel_count
+		//sinkWants.target_pixel_count
+		((webrtc::VideoTrackInterface*)consumer->GetTrack())->AddOrUpdateSink(this, sinkWants);
 
-			videoProducerId = FString(consumer->GetId().c_str());
-		}
-		else
-		{
-			samplesReceived_ = 0;
-			stream_->AddTrack((webrtc::AudioTrackInterface*)consumer->GetTrack());
-			((webrtc::AudioTrackInterface*)consumer->GetTrack())->AddSink(this);
-
-			audioProducerId = FString(consumer->GetId().c_str());
-		}
-
-		UE_LOG(LogTemp, Log, TEXT("added %s track %s (consumer %s)"),
-			ANSI_TO_TCHAR(consumer->GetKind().c_str()),
-			ANSI_TO_TCHAR(consumer->GetTrack()->id().c_str()),
-			ANSI_TO_TCHAR(consumer->GetId().c_str()));
-
-		// TODO: check if call to set_enabled is really needed
-		webrtc::MediaStreamTrackInterface::TrackState s = consumer->GetTrack()->state();
-		if (s == webrtc::MediaStreamTrackInterface::kLive)
-		{
-			consumer->GetTrack()->set_enabled(true);
-			OnStreamingStarted.Broadcast(consumer->GetId().c_str(), consumer->GetKind().c_str());
-		}
+		videoProducerId = FString(consumer->GetId().c_str());
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("stream object is NULL"));
+		samplesReceived_ = 0;
+		stream_->AddTrack((webrtc::AudioTrackInterface*)consumer->GetTrack());
+		((webrtc::AudioTrackInterface*)consumer->GetTrack())->AddSink(this);
+
+		audioProducerId = FString(consumer->GetId().c_str());
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("added %s track %s (consumer %s)"),
+		ANSI_TO_TCHAR(consumer->GetKind().c_str()),
+		ANSI_TO_TCHAR(consumer->GetTrack()->id().c_str()),
+		ANSI_TO_TCHAR(consumer->GetId().c_str()));
+
+	// TODO: check if call to set_enabled is really needed
+	webrtc::MediaStreamTrackInterface::TrackState s = consumer->GetTrack()->state();
+	if (s == webrtc::MediaStreamTrackInterface::kLive)
+	{
+		consumer->GetTrack()->set_enabled(true);
+		OnStreamingStarted.Broadcast(consumer->GetId().c_str(),
+			consumer->GetKind() == "video" ? EMediaTrackKind::Video : EMediaTrackKind::Audio);
 	}
 }
 
+void
+UVideoCoreMediaReceiver::resumeTrack(mediasoupclient::Consumer* consumer)
+{
+	//nlohmann::json {{"consumerId", consumer->GetId()}}
+	auto jj = fromJsonObject({ {"consumerId", consumer->GetId()} });
+	vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("resume"), jj, [](auto response) {});
+}
+
 void 
-UVideoCoreMediaReceiver::stopStreaming(const string& kind)
+UVideoCoreMediaReceiver::stopStreaming(const string& kind, const string& reason)
 {
 	// stop tracks
 	if (stream_)
@@ -406,7 +442,7 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind)
 	{
 		FScopeLock AudioLock(&audioSyncContext_);
 
-		producerId = videoConsumer_->GetId();
+		producerId = audioConsumer_->GetId();
 		audioConsumer_->Close();
 		delete audioConsumer_;
 		audioConsumer_ = nullptr;
@@ -416,51 +452,16 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind)
 	}
 
 	if (producerId != "")
-		OnStreamingStopped.Broadcast(producerId.c_str(), "initiated by client");
+		OnStreamingStopped.Broadcast(producerId.c_str(),
+			kind == "video" ? EMediaTrackKind::Video : EMediaTrackKind::Audio,
+			FString(ANSI_TO_TCHAR(reason.c_str())));
 }
 
 void
 UVideoCoreMediaReceiver::shutdown()
 {
-	if (stream_)
-	{
-		{
-			FScopeLock RenderLock(&renderSyncContext_);
-			for (auto t : stream_->GetVideoTracks())
-			{
-				// TODO: do need to disable track ?
-				t->set_enabled(false);
-				t->RemoveSink(this);
-				stream_->RemoveTrack(t);
-			}
-		}
-
-		{
-			// don't sync on mutex because audio streams have their own locks (unlike video)
-			//FScopeLock AudioLock(&audioSyncContext_);
-			for (auto t : stream_->GetAudioTracks())
-			{
-				t->set_enabled(false);
-				t->RemoveSink(this);
-
-				stream_->RemoveTrack(t);
-			}
-		}
-	}
-
-	// TODO: notify server we're closing transport and consumer
-	if (videoConsumer_)
-	{
-		FScopeLock RenderLock(&renderSyncContext_);
-		videoConsumer_->Close();
-		delete videoConsumer_;
-	}
-	if (audioConsumer_)
-	{
-		FScopeLock AudioLock(&audioSyncContext_);
-		audioConsumer_->Close();
-		delete audioConsumer_;
-	}
+	stopStreaming("audio", "shutdown");
+	stopStreaming("video", "shutdown");
 
 	if (frameBgraBuffer_)
 	{
@@ -473,7 +474,12 @@ void
 UVideoCoreMediaReceiver::OnTransportClose(mediasoupclient::Consumer* consumer)
 {
 	UE_LOG(LogTemp, Log, TEXT("Consumer transport closed"));
-	// TODO: cleanup and notify user
+	
+	if (consumer == audioConsumer_)
+		stopStreaming("audio", "transport closed");
+
+	if (consumer == videoConsumer_)
+		stopStreaming("video", "transport closed");
 }
 
 void
@@ -686,6 +692,32 @@ UVideoCoreMediaReceiver::GeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamp
 void
 UVideoCoreMediaReceiver::setState(EClientState state)
 {
-	clientState_ = state;
-	OnClientStateChanged.Broadcast(clientState_);
+	remoteClientState_ = state;
+	OnClientStateChanged.Broadcast(remoteClientState_);
+}
+
+bool
+UVideoCoreMediaReceiver::isTargetProducer(FString clientId, FString producerId, FString kind)
+{
+	// check if filters enabled
+	if (kind.Equals("video") && !videoStreamIdFilter_.IsEmpty())
+	{
+		return clientId.Equals(this->clientId) && producerId.Equals(videoStreamIdFilter_);
+	}
+	else if (kind.Equals("audio") && !audioStreamIdFilter_.IsEmpty())
+	{
+		return clientId.Equals(this->clientId) && producerId.Equals(audioStreamIdFilter_);
+	}
+	else
+	{
+		return clientId.Equals(this->clientId);
+	}
+
+	return false;
+}
+
+bool 
+UVideoCoreMediaReceiver::canConsume(FString kind)
+{
+	return !audioConsumer_ && kind.Equals("audio") || !videoConsumer_ && kind.Equals("video");
 }

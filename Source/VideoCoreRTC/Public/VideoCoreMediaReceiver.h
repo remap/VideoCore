@@ -24,8 +24,8 @@ class UVideoCoreSoundWave;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCorMediaReceiverSoundSourceReady, USoundWave*, SoundWave);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverClientStateChanged, EClientState, State);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, FString, Kind);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStopped, FString, ProducerId, FString, Reason);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, EMediaTrackKind, Kind);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FVideoCoreMediaReceiverStreamingStopped, FString, ProducerId, EMediaTrackKind, Kind, FString, Reason);
 
 /**
  * Media source used for rendering incoming WebRTC media track. Can render one video and one audio track only.
@@ -54,7 +54,7 @@ public: // UE
 	UTexture2D* getVideoTexture() const { return videoTexture_;  }
 
 	UFUNCTION(BlueprintCallable)
-	EClientState getClientState() const { return clientState_; }
+	EClientState getRemoteClientState() const { return remoteClientState_; }
 
 	UFUNCTION(BlueprintCallable)
 	bool hasTrackOfType(EMediaTrackKind Kind) const;
@@ -86,15 +86,21 @@ public: // UE
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool AutoConsume;
 
-	// TODO: make setter and re-start streaming if clientId changes
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	FString clientId;
 
-	UPROPERTY(BlueprintReadOnly)
-	FString videoProducerId;
+	UFUNCTION(BlueprintCallable)
+	void SetVideoStreamFilter(FString videoStreamId);
 
-	UPROPERTY(BlueprintReadOnly)
-	FString audioProducerId;
+	UFUNCTION(BlueprintCallable)
+	FString GetVideoProducerId() const;
+
+	// Allows to specify exact stream id to consume in case client produces multiple streams
+	UFUNCTION(BlueprintCallable)
+	void SetAudioStreamFilter(FString audioStreamId);
+
+	UFUNCTION(BlueprintCallable)
+	FString GetAudioProducerId() const;
 
 public: // native
 	int32 GeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamples);
@@ -108,6 +114,12 @@ protected:
 
 private: // UE
 
+	UPROPERTY(BlueprintGetter=GetVideoProducerId, BlueprintSetter = SetVideoStreamFilter)
+	FString videoProducerId;
+
+	UPROPERTY(BlueprintGetter=GetAudioProducerId, BlueprintSetter = SetAudioStreamFilter)
+	FString audioProducerId;
+
 	UPROPERTY()
 	UVideoCoreSignalingComponent* vcComponent_;
 	
@@ -115,8 +127,13 @@ private: // UE
 	UVideoCoreSoundWave* soundWave_;
 
 	TArray<FDelegateHandle> callbackHandles_;
-	// TODO: rename into remoteClientState_
-	EClientState clientState_;
+	EClientState remoteClientState_;
+
+	UPROPERTY()
+	FString videoStreamIdFilter_;
+
+	UPROPERTY()
+	FString audioStreamIdFilter_;
 
 private: // native
 
@@ -159,11 +176,16 @@ private: // native
 	void initFrameBuffer(int w, int h);
 	void captureVideoFrame();
 
-	void stopStreaming(const std::string& kind);
+	void stopStreaming(const std::string& kind, const std::string& reason = "client initiated");
 	void shutdown();
 
 	void setupConsumerTrack(mediasoupclient::Consumer* c);
+	void resumeTrack(mediasoupclient::Consumer* c);
 	void setupSoundWave(int nChannels, int bps, int sampleRate);
 
 	void setState(EClientState state);
+	// returns true if this client and producer IDs correspond to the clientId_ and either
+	// of producer ID filters (videoStreamIdFilter_ or audioStramIdFilter_)
+	bool isTargetProducer(FString clientId, FString producerId, FString kind);
+	bool canConsume(FString kind);
 };

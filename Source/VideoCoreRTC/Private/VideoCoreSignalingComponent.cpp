@@ -6,6 +6,7 @@
 //
 
 #include "VideoCoreSignalingComponent.h"
+#include "CULambdaRunnable.h"
 #include "native/video-core-rtc.hpp"
 
 using namespace std;
@@ -147,9 +148,10 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 		auto m = data->AsObject();
 		FString clientId = m->GetStringField(TEXT("clientId"));
 		FString producerId = m->GetStringField(TEXT("producerId"));
+		FString kind = m->GetStringField(TEXT("kind"));
 
-		UE_LOG(LogTemp, Log, TEXT("client {%s} created new producer {%s}"), *clientId, *producerId);
-		onNewProducer_.Broadcast(clientId, producerId);
+		UE_LOG(LogTemp, Log, TEXT("client %s created new producer %s (%s)"), *clientId, *producerId, *kind);
+		onNewProducer_.Broadcast(clientId, producerId, kind);
 	});
 
 	sIOClientComponent_->OnNativeEvent(TEXT("admit"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
@@ -292,14 +294,17 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 {
 	if (t)
 	{
-		if (!t->IsClosed())
-		{
-			UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
-			t->Close(); // this should trigger OnTransportClose for all producers/consumers
-		}
+		// schedule cleanup on game thread
+		FCULambdaRunnable::RunShortLambdaOnGameThread([t]() {
+			if (!t->IsClosed())
+			{
+				UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
+				t->Close(); // this should trigger OnTransportClose for all producers/consumers
+			}
 
-		// we don't free transport because we don't own it, just nullify
-		// (it is created by the mediasoupclient::Device object)
+			delete t;
+		});
+		// nullify pointer now
 		t = nullptr;
 	}
 }
@@ -324,16 +329,8 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 		FString emit = (getRecvTransport() && getRecvTransport()->GetId() == transport->GetId() ? 
 			TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
 
-		sIOClientComponent_->EmitNative(emit, obj, [promise](auto response) {
-			if (response.Num())
-			{
-				auto m = response[0]->AsObject();
-				UE_LOG(LogTemp, Log, TEXT("connect transport reply %s"), *USIOJConvert::ToJsonString(m));
-			}
-		});
+		sIOClientComponent_->EmitNative(emit, obj, [promise](auto response) {});
 	}
-
-	// TODO: shall this be inside the lambda above?
 	promise->set_value();
 	return promise->get_future();
 }
@@ -351,15 +348,17 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 	//	checking
 	//	completed
 
-	// TODO: handle failed/closed states
-
 	FString str(connectionState.c_str());
 	UE_LOG(LogTemp, Log, TEXT("Transport connection state change %s"), *str);
 
-	if (connectionState == "connected")
-		// TODO: replace with mcast delegate
-		if (transport == getSendTransport())
-			sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
+	if (connectionState == "failed" ||
+		connectionState == "disconnected")
+	{
+		if (transport == recvTransport_)
+			cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+		if (transport == sendTransport_)
+			cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+	}
 }
 
 std::future<std::string> 
