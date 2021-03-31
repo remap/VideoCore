@@ -21,6 +21,7 @@ namespace videocore {
 		void SetFrameSize(int width, int height);
 		bool CaptureFrame(uint8_t* argbData, FTimecode tc);
 		void PublishFrame();
+		void SetState(webrtc::MediaSourceInterface::SourceState s) { state_ = s; }
 
 		// AdaptedVideoTrackSource interface override
 		void AddRef() const override {

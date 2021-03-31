@@ -26,6 +26,7 @@ namespace videocore
 }
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCorMediaSenderStartProducing, FString, StreamId, EMediaTrackKind, Kind);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FVideoCorMediaSenderProduceFailure, FString, StreamId, EMediaTrackKind, Kind, FString, Reason);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FVideoCorMediaSenderStoppedProducing, FString, StreamId, EMediaTrackKind, Kind, FString, Reason);
 
 DECLARE_MULTICAST_DELEGATE(FVideoCoreRtcInternalStreamReady);
@@ -55,8 +56,12 @@ public: // UE
 	FVideoCorMediaSenderStartProducing OnStartProducing;
 
 	UPROPERTY(BlueprintAssignable)
+	FVideoCorMediaSenderProduceFailure OnProduceFailure;
+
+	UPROPERTY(BlueprintAssignable)
 	FVideoCorMediaSenderStoppedProducing OnStoppedProducing;
 
+	// will automatically start producing streams when connected to media server
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool AutoProduce;
 
@@ -81,6 +86,8 @@ protected: // UE
 	*/
 	void BeginDestroy() override;
 
+
+
 private: // UE
 	
 	UPROPERTY()
@@ -96,13 +103,16 @@ private: // native
 	void OnTransportClose(mediasoupclient::Producer*) override;
 	
 	bool startStream(std::string id, EMediaTrackKind trackKind);
+	void stopStream(EMediaTrackKind trackKind, std::string reason);
+	void shutdown();
+	void checkAutoProduce();
+
 	void setupRenderTarget(FIntPoint InFrameSize, FFrameRate InFrameRate);
 	void createStream();
 	void createVideoTrack(std::string trackId);
 	void createAudioTrack(std::string trackId);
 	void createVideoSource();
 	void createProducer();
-	void shutdown();
 
 	// tries to copy render target into copiedTexture_ variable
 	// called on render thread every frame 
@@ -112,8 +122,9 @@ private: // native
 	// tries to send video frame over RTC stream
 	void trySendFrame();
 
-	bool isProducingVideo_;
-	bool isProducingAudio_;
+
+	EMediaTrackState videoTrackState_;
+	EMediaTrackState audioTrackState_;
 
 	// rtc objects
 	std::shared_ptr<videocore::RenderTargetVideoTrackSource> videoSource_;

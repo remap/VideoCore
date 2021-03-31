@@ -29,6 +29,7 @@ UENUM(BlueprintType)
 enum class EMediaTrackState : uint8 {
 	Unknown UMETA(DisplayName = "Unknown"),
 	Ended UMETA(DisplayName = "Ended"),
+	Initializing UMETA(DisplayName = "Initializing"),
 	Live UMETA(DisplayName = "Live")
 };
 

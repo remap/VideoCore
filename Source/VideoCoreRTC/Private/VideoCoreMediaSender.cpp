@@ -15,8 +15,8 @@ using namespace videocore;
 
 UVideoCoreMediaSender::UVideoCoreMediaSender(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, isProducingVideo_(false)
-	, isProducingAudio_(false)
+	, videoTrackState_(EMediaTrackState::Unknown)
+	, audioTrackState_(EMediaTrackState::Unknown)
 {
 
 }
@@ -37,6 +37,10 @@ void UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingCompon
 
 		vcComponent_->invokeWhenSendTransportReady([this](const mediasoupclient::SendTransport*) {
 			createStream();
+
+			if (vcComponent_->getSocketIOClientComponent()->bIsConnected)
+				checkAutoProduce();
+			
 		});
 	}
 	// TODO: return false
@@ -60,8 +64,7 @@ bool UVideoCoreMediaSender::Produce(FString trackId, EMediaTrackKind trackKind)
 
 void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 {
-	isProducingVideo_ = false;
-	// TODO: do cleanup
+	stopStream(trackKind, "user initiated");
 }
 
 void UVideoCoreMediaSender::BeginDestroy()
@@ -79,7 +82,9 @@ void UVideoCoreMediaSender::BeginDestroy()
 void UVideoCoreMediaSender::OnTransportClose(mediasoupclient::Producer* p)
 {
 	UE_LOG(LogTemp, Log, TEXT("Producer transport closed."));
-	// TODO: cleanup here
+
+	stopStream(EMediaTrackKind::Video, "transport closed");
+	stopStream(EMediaTrackKind::Audio, "transport closed");
 }
 
 bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKind)
@@ -87,30 +92,101 @@ bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKin
 	switch (trackKind) {
 	case EMediaTrackKind::Audio:
 	{
-
+		UE_LOG(LogTemp, Log, TEXT("Setting up audio stream"));
 	}
 	break;
 	case EMediaTrackKind::Video:
 	{
-		// TODO: check already producing
-		if (!isProducingVideo_)
+		if (videoTrackState_ < EMediaTrackState::Initializing)
 		{
-			createVideoSource();
-			setupRenderTarget(FrameSize, FrameRate);
-			createVideoTrack(trackId);
-			createProducer();
-			return true;
+			if (IsValid(RenderTarget))
+			{
+				UE_LOG(LogTemp, Log, TEXT("Setting up video stream"));
+
+				videoTrackState_ = EMediaTrackState::Initializing;
+
+				createVideoSource();
+				setupRenderTarget(FrameSize, FrameRate);
+				createVideoTrack(trackId);
+				createProducer();
+				return true;
+			}
+			else
+			{
+				OnProduceFailure.Broadcast(trackId.c_str(), trackKind, "render target is not set");
+			}
+		}
+		else
+		{
+			OnProduceFailure.Broadcast(trackId.c_str(), trackKind, "already producing");
 		}
 	}
 	break;
-	default:;
+	default:
+	{
+		OnProduceFailure.Broadcast(trackId.c_str(), trackKind, "unknown track kind");
+	} break;
 	};
 
 	return false;
 }
 
+void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
+{
+	if (stream_)
+	{
+		switch (trackKind)
+		{
+		case EMediaTrackKind::Audio:
+		{
+			audioTrackState_ = EMediaTrackState::Ended;
+		}
+			break;
+		case EMediaTrackKind::Video:
+		{
+			{
+				FScopeLock RenderLock(&renderSync_);
+				videoTrackState_ = EMediaTrackState::Ended;
+
+				if (videoSource_) 
+					videoSource_->SetState(webrtc::MediaSourceInterface::SourceState::kEnded);
+			}
+
+			for (auto t : stream_->GetVideoTracks())
+			{
+				t->set_enabled(false);
+				stream_->RemoveTrack(t);
+
+				OnStoppedProducing.Broadcast(t->id().c_str(), trackKind, reason.c_str());
+				UE_LOG(LogTemp, Log, TEXT("removed video track %s"), ANSI_TO_TCHAR(t->id().c_str()));
+			}
+
+			videoTrack_.release();
+
+			if (videoProducer_)
+			{
+				videoProducer_->Close();
+				delete videoProducer_;
+				videoProducer_ = nullptr;
+			}
+		}
+			break;
+		case EMediaTrackKind::Data:
+		{
+		}
+			break;
+		case EMediaTrackKind::Unknown:
+		default:
+			break;
+		}
+	}
+}
+
 void UVideoCoreMediaSender::setupRenderTarget(FIntPoint InFrameSize, FFrameRate InFrameRate)
 {
+	UE_LOG(LogTemp, Log, TEXT("Set up render target %dx%d (%d FPS)"),
+		InFrameSize.X, InFrameSize.Y, FrameRate.Numerator);
+
 	FrameSize = InFrameSize;
 	FrameRate = InFrameRate;
 
@@ -155,7 +231,7 @@ void UVideoCoreMediaSender::setupRenderTarget(FIntPoint InFrameSize, FFrameRate 
 
 void UVideoCoreMediaSender::createStream()
 {
-	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream"));
+	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream for producing"));
 
 	stream_ = getWebRtcFactory()->CreateLocalMediaStream(vcComponent_->getRecvTransport()->GetId());
 	onMediaStreamReady_.Broadcast();
@@ -165,6 +241,8 @@ void UVideoCoreMediaSender::createVideoTrack(string tId)
 {
 	if (videoSource_)
 	{
+		UE_LOG(LogTemp, Log, TEXT("Create video track"));
+
 		videoTrack_ = getWebRtcFactory()->CreateVideoTrack(tId, videoSource_.get());
 		stream_->AddTrack(videoTrack_);
 	}
@@ -184,10 +262,16 @@ void UVideoCoreMediaSender::createAudioTrack(string tId)
 
 void UVideoCoreMediaSender::createVideoSource()
 {
-	// TODO: check source already exists
+	if (!videoSource_)
+	{
+		videoSource_.reset();
+		videoSource_ = make_shared<RenderTargetVideoTrackSource>();
 
-	videoSource_.reset();
-	videoSource_ = make_shared<RenderTargetVideoTrackSource>();
+		UE_LOG(LogTemp, Log, TEXT("Created new video source"));
+	}
+
+	videoSource_->SetState(webrtc::MediaSourceInterface::SourceState::kInitializing);
+	UE_LOG(LogTemp, Log, TEXT("Set up video source"));
 }
 
 void UVideoCoreMediaSender::createProducer()
@@ -221,30 +305,63 @@ void UVideoCoreMediaSender::createProducer()
 				if (m->HasField("id"))
 				{
 					promise->set_value(TCHAR_TO_ANSI(*m->GetStringField("id")));
+
+					UE_LOG(LogTemp, Log, TEXT("Server produce reply successfull: %s"), *m->GetStringField("id"));
 				}
 				else
+				{
 					promise->set_exception(make_exception_ptr("server:produce returned invalid response: " +
 						string(TCHAR_TO_ANSI(*USIOJConvert::ToJsonString(m)))));
-					
-			});
-			//promise->set_exception(make_exception_ptr("produce unknown track"));
 
+					UE_LOG(LogTemp, Log, TEXT("Server produce reply error: %s"), *USIOJConvert::ToJsonString(m));
+				}	
+			});
+
+			UE_LOG(LogTemp, Log, TEXT("Awaiting server produce reply"));
 			return promise->get_future();
 		});
 
 		// invoke on non-game thread because this will trigger callback 
 		// with request to the server, shouldn't block game thread waiting for the reply
 		FCULambdaRunnable::RunLambdaOnBackGroundThread([this, encodings]() {
-			this->videoProducer_ = vcComponent_->getSendTransport()->Produce(this, videoTrack_, &encodings, nullptr,
-				{ { "trackId", videoTrack_->id() } });
-			isProducingVideo_ = true;
-			videoTrack_->set_enabled(true);
+			UE_LOG(LogTemp, Log, TEXT("Creating video producer"));
+			
+			string reason = "";
+			try
+			{
+				this->videoProducer_ = vcComponent_->getSendTransport()->Produce(this, videoTrack_, &encodings, nullptr,
+					{ { "trackId", videoTrack_->id() } });
+
+				videoTrackState_ = EMediaTrackState::Live;
+				videoSource_->SetState(webrtc::MediaSourceInterface::SourceState::kLive);
+				videoTrack_->set_enabled(true);
+
+				UE_LOG(LogTemp, Log, TEXT("Producing video now"));
+			}
+			catch (exception& e)
+			{
+				videoTrackState_ = EMediaTrackState::Unknown;
+				reason = e.what();
+
+				UE_LOG(LogTemp, Log, TEXT("Producing failure: %s"), ANSI_TO_TCHAR(e.what()));
+			}
+
+			FCULambdaRunnable::RunShortLambdaOnGameThread([this, reason]() {
+				if (videoTrackState_ == EMediaTrackState::Live)
+					OnStartProducing.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video);
+				else
+					OnProduceFailure.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video, reason.c_str());
+				
+			});
 		});	
 	}
 }
 
 void UVideoCoreMediaSender::shutdown()
 {
+	stopStream(EMediaTrackKind::Video, "shutdown");
+	stopStream(EMediaTrackKind::Audio, "shutdown");
+
 	{
 		FScopeLock RenderLock(&renderSync_);
 
@@ -256,13 +373,25 @@ void UVideoCoreMediaSender::shutdown()
 	}
 }
 
-// render thread
+void UVideoCoreMediaSender::checkAutoProduce()
+{
+	if (AutoProduce)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Auto-produce is ON: setup streams"));
+
+		// TODO: introduce stream hints (ids) as properties and use them here
+		if (videoTrackState_ < EMediaTrackState::Initializing) Produce(FString(), EMediaTrackKind::Video);
+		if (audioTrackState_ < EMediaTrackState::Initializing) Produce(FString(), EMediaTrackKind::Audio);
+	}
+}
+
+// called on render thread
 void UVideoCoreMediaSender::tryCopyRenderTarget()
 {
 	FScopeLock RenderLock(&renderSync_);
 	int64 time_code = FDateTime::Now().GetTimeOfDay().GetTicks();
 
-	if (isProducingVideo_ &&
+	if (videoTrackState_ == EMediaTrackState::Live &&
 		IsValid(RenderTarget) && RenderTarget->Resource != nullptr)
 	{
 		FTimecode tc = FTimecode::FromTimespan(
@@ -280,36 +409,42 @@ void UVideoCoreMediaSender::tryCopyRenderTarget()
 			FTexture2DRHIRef SourceTexture = (FTexture2DRHIRef&)RenderTarget->Resource->TextureRHI;
 			if (SourceTexture.IsValid())
 			{
-#if UE_EDITOR
+				bool needsResize = false;
+//#if UE_EDITOR
 				if (SourceTexture->GetSizeXY() == backBufferTexture_->GetSizeXY())
 				{
 					RHICmdList.CopyToResolveTarget(SourceTexture, backBufferTexture_, FResolveParams());
 				}
 				else
-#endif
+//#endif
 				{
-					// TODO: implement conversion
-					assert(0);
+					needsResize = true;
+					setupRenderTarget(SourceTexture->GetSizeXY(), this->FrameRate);
+					// TODO: implement conversion?
 				}
 
-				uint8_t* buffer;
-				int32 Width = 0, Height = 0;
-				// Map the staging surface so we can copy the buffer 
-				RHICmdList.MapStagingSurface(backBufferTexture_, (void*&)buffer, Width, Height);
-
-				// If we don't have a draw result, resize our frame
-				if (FrameSize != FIntPoint(Width, Height))
+				if (!needsResize)
 				{
-					// Change the render target configuration based on what the RHI determines the size to be
-					setupRenderTarget(FIntPoint(Width, Height), this->FrameRate);
-				}
-				else
-				{
-					videoSource_->CaptureFrame(buffer, tc);					
-				}
+					uint8_t* buffer;
+					int32 Width = 0, Height = 0;
 
-				// unmap the staging surface
-				RHICmdList.UnmapStagingSurface(backBufferTexture_);
+					// Map the staging surface so we can copy the buffer 
+					RHICmdList.MapStagingSurface(backBufferTexture_, (void*&)buffer, Width, Height);
+
+					// If we don't have a draw result, resize our frame
+					if (FrameSize != FIntPoint(Width, Height))
+					{
+						// Change the render target configuration based on what the RHI determines the size to be
+						setupRenderTarget(FIntPoint(Width, Height), this->FrameRate);
+					}
+					else
+					{
+						videoSource_->CaptureFrame(buffer, tc);
+					}
+
+					// unmap the staging surface
+					RHICmdList.UnmapStagingSurface(backBufferTexture_);
+				}
 			}
 		}
 	}
@@ -318,7 +453,7 @@ void UVideoCoreMediaSender::tryCopyRenderTarget()
 // game thread
 void UVideoCoreMediaSender::trySendFrame()
 {
-	if (isProducingVideo_ && videoSource_)
+	if (videoTrackState_ == EMediaTrackState::Live && videoSource_)
 	{
 		videoSource_->PublishFrame();
 	}

@@ -284,7 +284,7 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 
 void UVideoCoreMediaReceiver::createStream()
 {
-	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream"));
+	UE_LOG(LogTemp, Log, TEXT("Transport ready. Creating stream for consuming"));
 	assert(!stream_);
 
 	stream_ = getWebRtcFactory()->CreateLocalMediaStream(vcComponent_->getRecvTransport()->GetId());
