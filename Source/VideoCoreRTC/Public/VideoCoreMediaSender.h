@@ -25,10 +25,13 @@ namespace videocore
 	class RenderTargetVideoTrackSource;
 }
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCorMediaSenderStartProducing, FString, StreamId, EMediaTrackKind, Kind);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FVideoCorMediaSenderStoppedProducing, FString, StreamId, EMediaTrackKind, Kind, FString, Reason);
+
 DECLARE_MULTICAST_DELEGATE(FVideoCoreRtcInternalStreamReady);
 
 /**
- * Media source used for sending attached render target texture as WebRTC media track. Can send one video and one audio track only.
+ * Media source used for sending attached render target texture as WebRTC media track. Can send one video and/or one audio track only.
  */
 UCLASS(BlueprintType, Blueprintable, HideCategories = ("Platforms"), Category = "VideoCore IO", HideCategories = ("Information"), META = (DisplayName = "VideoCoreRTC Media Sender"))
 class VIDEOCORERTC_API UVideoCoreMediaSender : public UBaseMediaSource
@@ -43,10 +46,19 @@ public: // UE
 	void Init(UVideoCoreSignalingComponent* vcSiganlingComponent);
 
 	UFUNCTION(BlueprintCallable)
-	bool Produce(FString streamId, EMediaTrackKind trackKind);
+	bool Produce(FString contentHint, EMediaTrackKind trackKind);
 
 	UFUNCTION(BlueprintCallable)
 	void Stop(EMediaTrackKind trackKind);
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCorMediaSenderStartProducing OnStartProducing;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCorMediaSenderStoppedProducing OnStoppedProducing;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool AutoProduce;
 
 	// The texture to send over WebRTC 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Content", META = (DisplayName = "Render Target", AllowPrivateAccess = true))
