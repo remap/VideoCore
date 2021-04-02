@@ -102,6 +102,8 @@ public:	// native
 		nlohmann::json rtpParameters, const nlohmann::json& appData)> OnTransportProduce;
 	void invokeOnTransportProduce(std::string trackId, OnTransportProduce cb);
 
+	void invokeOnRecvTransportConnect(std::function<void()> cb);
+
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -119,6 +121,7 @@ private: // native
 	mediasoupclient::RecvTransport* recvTransport_;
 	mediasoupclient::SendTransport* sendTransport_;
 	std::map<std::string, OnTransportProduce> transportProduceCb_;
+	std::vector<std::function<void()>> recvTransportConnectCb_;
 
 	// mediasoupclient::Transport::Listener (RecvTransport::Listener) interface
 	std::future<void> OnConnect(

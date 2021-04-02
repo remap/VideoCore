@@ -24,6 +24,7 @@ namespace videocore
 
 	TSharedPtr<FJsonValue> fromJsonObject(const nlohmann::json& jobj);
 	
+	bool getIsUsingDefaultAdm();
 	mediasoupclient::Device& getDevice();
 	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> getWebRtcFactory();
 

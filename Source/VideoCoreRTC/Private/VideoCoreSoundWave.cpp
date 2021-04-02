@@ -14,7 +14,7 @@ UVideoCoreSoundWave::Init(UVideoCoreMediaReceiver* mediaReceiver, int32 nChannel
 	NumChannels = nChannels;
 	SampleRate = sampleRate;
 	SampleByteSize = (int32)ceil((float)bps_ / 8.);
-	bLooping = false;
+	bLooping = true;
 	Duration = INDEFINITELY_LOOPING_DURATION;
 
 	bProcedural = true;
@@ -24,6 +24,13 @@ UVideoCoreSoundWave::Init(UVideoCoreMediaReceiver* mediaReceiver, int32 nChannel
 	bOverrideConcurrency = true;
 	ConcurrencyOverrides.bLimitToOwner = true;
 	ConcurrencyOverrides.MaxCount = 2;
+
+	// TODO: find more info on this. set empricially
+	//NumSamplesToGeneratePerCallback = 2048 * 8;
+
+	OnSoundWaveProceduralUnderflow.BindLambda([](auto w, int32 n) {
+		UE_LOG(LogTemp, Log, TEXT("AUDIO BUFFER UNDERFLOW %d"), n);
+	});
 }
 
 int32

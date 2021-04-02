@@ -44,7 +44,7 @@ public: // UE
 	~UVideoCoreMediaSender();
 
 	UFUNCTION(BlueprintCallable)
-	void Init(UVideoCoreSignalingComponent* vcSiganlingComponent);
+	bool Init(UVideoCoreSignalingComponent* vcSiganlingComponent);
 
 	UFUNCTION(BlueprintCallable)
 	bool Produce(FString contentHint, EMediaTrackKind trackKind);

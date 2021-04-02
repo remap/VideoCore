@@ -52,6 +52,12 @@ public:
 		int SamplesReceived;
 
 	UPROPERTY(BlueprintReadOnly)
+		int AudioBufferSize;
+
+	UPROPERTY(BlueprintReadOnly)
+		FIntPoint AudioBufferState;
+
+	UPROPERTY(BlueprintReadOnly)
 		FString VideoContentHint;
 
 	UPROPERTY(BlueprintReadOnly)

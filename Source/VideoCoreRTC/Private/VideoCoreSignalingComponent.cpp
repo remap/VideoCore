@@ -117,6 +117,11 @@ void UVideoCoreSignalingComponent::invokeOnTransportProduce(std::string trackId,
 	transportProduceCb_[trackId] = cb;
 }
 
+void UVideoCoreSignalingComponent::invokeOnRecvTransportConnect(function<void()> cb)
+{
+	recvTransportConnectCb_.push_back(cb);
+}
+
 void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 {
 	sIOClientComponent_->OnConnected.AddDynamic(this, &UVideoCoreSignalingComponent::onConnectedToServer);
@@ -234,7 +239,8 @@ void UVideoCoreSignalingComponent::setupConsumerTransport(mediasoupclient::Devic
 		if (m->TryGetStringField(TEXT("error"), errorMsg))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Server failed to create consumer transport: %s"), *errorMsg);
-			// TODO: callback
+			
+			OnRtcSubsystemFailed.Broadcast(FString::Printf(TEXT("consumer transport setup failed: %s"), *errorMsg));
 		}
 		else
 		{
@@ -269,7 +275,8 @@ void UVideoCoreSignalingComponent::setupProducerTransport(mediasoupclient::Devic
 		if (m->TryGetStringField(TEXT("error"), errorMsg))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Server failed to create producer transport: %s"), *errorMsg);
-			// TODO: callback
+
+			OnRtcSubsystemFailed.Broadcast(FString::Printf(TEXT("producer transport setup failed: %s"), *errorMsg));
 		}
 		else
 		{
@@ -304,6 +311,14 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 
 			delete t;
 		});
+
+		// sorry about that
+		if (is_same<T, mediasoupclient::RecvTransport>::value)
+			recvTransportConnectCb_.clear();
+		// TODO: fix crash below
+		//if (is_same<T, mediasoupclient::SendTransport>::value)
+		//	transportProduceCb_.clear();
+
 		// nullify pointer now
 		t = nullptr;
 	}
@@ -325,7 +340,6 @@ UVideoCoreSignalingComponent::OnConnect(mediasoupclient::Transport* transport, c
 		auto obj = USIOJConvert::MakeJsonObject();
 		obj->SetStringField(TEXT("transportId"), transport->GetId().c_str());
 		obj->SetField(TEXT("dtlsParameters"), fromJsonObject(dtlsParameters));
-		// TODO: call this in bg thread and return future
 		FString emit = (getRecvTransport() && getRecvTransport()->GetId() == transport->GetId() ? 
 			TEXT("connectConsumerTransport") : TEXT("connectProducerTransport"));
 
@@ -359,6 +373,10 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 		if (transport == sendTransport_)
 			cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
 	}
+
+	if (connectionState == "connected" && transport == recvTransport_)
+		sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
+		//for (auto cb : recvTransportConnectCb_) cb();
 }
 
 std::future<std::string> 

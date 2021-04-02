@@ -26,7 +26,7 @@ UVideoCoreMediaSender::~UVideoCoreMediaSender()
 
 }
 
-void UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingComponent)
+bool UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingComponent)
 {
 	vcComponent_ = vcSiganlingComponent;
 
@@ -42,8 +42,11 @@ void UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingCompon
 				checkAutoProduce();
 			
 		});
+
+		return true;
 	}
-	// TODO: return false
+
+	return false;
 }
 
 bool UVideoCoreMediaSender::Produce(FString trackId, EMediaTrackKind trackKind)
@@ -351,7 +354,6 @@ void UVideoCoreMediaSender::createProducer()
 					OnStartProducing.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video);
 				else
 					OnProduceFailure.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video, reason.c_str());
-				
 			});
 		});	
 	}

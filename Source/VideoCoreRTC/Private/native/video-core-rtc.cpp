@@ -7,6 +7,7 @@
 
 #include "video-core-rtc.hpp"
 #include "modules/audio_device/include/audio_device.h"
+#include "modules/audio_device/include/fake_audio_device.h"
 #include "api/create_peerconnection_factory.h"
 #include "system_wrappers/include/clock.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
@@ -15,7 +16,10 @@
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "SIOJConvert.h"
 
+// change this to true to use WebrRTC's default audio device module
+static bool useDefaultAudioDeviceModule = false; 
 static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
+
 /* MediaStreamTrack holds reference to the threads of the PeerConnectionFactory.
  * Use plain pointers in order to avoid threads being destructed before tracks.
  */
@@ -30,7 +34,7 @@ static FVideoCoreRtcOnDeviceLoadFailed OnDeviceLoadFailed;
 static FCriticalSection deviceSync;
 static mediasoupclient::Device device;
 
-void createWebRtcFactory();
+void createWebRtcFactory(bool);
 
 using namespace videocore;
 
@@ -62,6 +66,11 @@ TSharedPtr<FJsonValue> videocore::fromJsonObject(const nlohmann::json& jobj)
 	return USIOJConvert::JsonStringToJsonValue(jobj.dump().c_str());
 }
 
+bool videocore::getIsUsingDefaultAdm()
+{
+	return useDefaultAudioDeviceModule;
+}
+
 mediasoupclient::Device& videocore::getDevice()
 {
 	return device;
@@ -70,7 +79,7 @@ mediasoupclient::Device& videocore::getDevice()
 rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> videocore::getWebRtcFactory()
 {
 	if (!factory)
-		createWebRtcFactory();
+		createWebRtcFactory(useDefaultAudioDeviceModule);
 
 	return factory;
 }
@@ -132,7 +141,7 @@ std::string videocore::generateUUID()
 }
 
 // ****
-void createWebRtcFactory()
+void createWebRtcFactory(bool useDefaultAdm)
 {
 	networkThread = rtc::Thread::Create().release();
 	signalingThread = rtc::Thread::Create().release();
@@ -147,20 +156,38 @@ void createWebRtcFactory()
 		UE_LOG(LogTemp, Error, TEXT("thread start errored"));
 	}
 
-	webrtc::PeerConnectionInterface::RTCConfiguration config;
-	//webrtc::AudioDeviceModule::AudioLayer audioLayer = webrtc::AudioDeviceModule::kPlatformDefaultAudio;
-	//webrtc::Create
-	//auto audioDeviceModule = webrtc::AudioDeviceModule::Create(audioLayer, );
-	//if (!audioDeviceModule)
-	//{
-	//	UE_LOG(LogTemp, Error, TEXT("audio capture module creation errored"));
-	//}
+	//webrtc::PeerConnectionInterface::RTCConfiguration config;
+	
+	rtc::scoped_refptr<webrtc::AudioDeviceModule> adm(useDefaultAdm ? nullptr : new rtc::RefCountedObject<webrtc::FakeAudioDeviceModule>());
+
+	if (!useDefaultAdm && !adm)
+	{
+		UE_LOG(LogTemp, Error, TEXT("audio capture module creation errored. using default ADM instead"));
+	}
+
+	webrtc::AudioDeviceModule::AudioLayer l;
+	adm->ActiveAudioLayer(&l);
+
+	bool isAdm = adm;
+	if (isAdm)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ADM is false"));
+	}
+
+	if (adm->Initialized())
+	{
+		UE_LOG(LogTemp, Log, TEXT("ADM Initialized. layer %d %d"), l, isAdm);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("ADM is NOT Initialized"));
+	}
 
 	factory = webrtc::CreatePeerConnectionFactory(
 		networkThread,
 		workerThread,
 		signalingThread,
-		nullptr, // default ADM
+		adm, // nullptr -- default ADM
 		webrtc::CreateBuiltinAudioEncoderFactory(),
 		webrtc::CreateBuiltinAudioDecoderFactory(),
 		webrtc::CreateBuiltinVideoEncoderFactory(),

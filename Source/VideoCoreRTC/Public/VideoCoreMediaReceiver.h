@@ -22,6 +22,10 @@
 
 class UVideoCoreSoundWave;
 
+namespace videocore {
+	class AudioBuffer;
+}
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCorMediaReceiverSoundSourceReady, USoundWave*, SoundWave);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverClientStateChanged, EClientState, State);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, EMediaTrackKind, Kind);
@@ -166,9 +170,25 @@ private: // native
 	size_t framesReceived_; // TODO: multi-thread read access -- make atomic?
 
 	// audio rendering
+	std::shared_ptr<videocore::AudioBuffer> audioBuffer_;
 	FCriticalSection audioSyncContext_;
-	std::vector<uint8_t> audioBuffer_;
-	uint32_t nSamples_, nChannels_, bps_, nFrames_, sampleRate_;
+	typedef struct _AudioDataDescription {
+		uint32_t nChannels_, bps_, sampleRate_;
+
+		bool operator ==(const struct _AudioDataDescription& other) const
+		{
+			return nChannels_ == other.nChannels_ &&
+				bps_ == other.bps_ &&
+				sampleRate_ == other.sampleRate_;
+		}
+		bool operator !=(const struct _AudioDataDescription& other) const
+		{
+			return !(*this == other);
+		}
+	} AudioDataDescription;
+	bool isCreatingSounWave_;
+
+	AudioDataDescription adataDesc_;
 	size_t samplesReceived_; // TODO: multi-thread read access -- make atomic?
 
 	// helper calls

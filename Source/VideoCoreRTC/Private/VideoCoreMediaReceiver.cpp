@@ -7,6 +7,7 @@
 
 #include "VideoCoreMediaReceiver.h"
 #include "native/video-core-rtc.hpp"
+#include "native/video-core-audio-buffer.hpp"
 #include "SIOJConvert.h"
 #include "Texture2DResource.h"
 #include "third_party/libyuv/include/libyuv.h"
@@ -35,6 +36,7 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, stream_(nullptr)
 	, audioConsumer_(nullptr)
 	, videoConsumer_(nullptr)
+	, audioBuffer_(make_shared<videocore::AudioBuffer>(256, 2048))
 {
 	initTexture(kTextureWidth, kTextureHeight);
 }
@@ -182,6 +184,9 @@ FVideoCoreMediaStreamStatistics UVideoCoreMediaReceiver::getStats() const
 		
 		// TODO: addd more stats if needed
 		stats.SamplesReceived = (int)samplesReceived_;
+		stats.AudioBufferSize = IsValid(soundWave_) ? soundWave_->GetAvailableAudioByteCount() : 0; // audioBuffer_->length();
+		stats.AudioBufferState.X = audioBuffer_->size();
+		stats.AudioBufferState.Y = audioBuffer_->capacity();
 	}
 
 	if (hasTrackOfType(EMediaTrackKind::Video))
@@ -316,11 +321,16 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t, const string
 			UE_LOG(LogTemp, Log, TEXT("setup %s consumer for producer %s"), 
 				ANSI_TO_TCHAR(kind.c_str()),
 				ANSI_TO_TCHAR(producerId.c_str()));
+			
+			// special handling for cases when transport hasn't connected yet
+			vcComponent_->invokeOnRecvTransportConnect([this, kind]() {
+				resumeTrack(kind == "video" ? videoConsumer_ : audioConsumer_);
+			});
 
 			consumer = vcComponent_->getRecvTransport()->Consume(this,
 				producerId,
 				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("producerId")))),
-				TCHAR_TO_ANSI(*(m->GetStringField(TEXT("kind")))),
+				kind,
 				&rtpParams
 			);
 
@@ -360,7 +370,8 @@ UVideoCoreMediaReceiver::setupConsumerTrack(mediasoupclient::Consumer* consumer)
 	{
 		samplesReceived_ = 0;
 		stream_->AddTrack((webrtc::AudioTrackInterface*)consumer->GetTrack());
-		((webrtc::AudioTrackInterface*)consumer->GetTrack())->AddSink(this);
+		if (!videocore::getIsUsingDefaultAdm())
+			((webrtc::AudioTrackInterface*)consumer->GetTrack())->AddSink(this);
 
 		audioProducerId = FString(consumer->GetId().c_str());
 	}
@@ -420,7 +431,7 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind, const string& reason)
 				UE_LOG(LogTemp, Log, TEXT("removed audio track %s"), ANSI_TO_TCHAR(t->id().c_str()));
 			}
 
-			audioBuffer_.clear();
+			audioBuffer_->reset();
 		}
 	}
 
@@ -525,7 +536,7 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 	}
 	else
 	{
-		// TODO: set error
+		UE_LOG(LogTemp, Error, TEXT("Unsupported incoming frame type: %d"), t);
 	}
 }
 
@@ -535,25 +546,38 @@ UVideoCoreMediaReceiver::OnData(const void* audio_data, int bits_per_sample, int
 {
 	/*UE_LOG(LogTemp, Log, TEXT("receiveing audio data bps %d sample rate %d ch %d frame# %d"), 
 		bits_per_sample, sample_rate, number_of_channels, number_of_frames);*/
-
 	{
 		FScopeLock Lock(&audioSyncContext_);
-		if (!IsValid(soundWave_))
-			AsyncTask(ENamedThreads::GameThread, [=]() {
-				setupSoundWave(number_of_channels, bits_per_sample, sample_rate);
-			});
-		
-		// copy/store audio data
-		// TODO: wrap in a struct, track if anything changes
-		nFrames_ = number_of_frames;
-		nChannels_ = number_of_channels;
-		bps_ = bits_per_sample;
-		sampleRate_ = sample_rate;
 
-		// TODO: refactor audiobuffer to reuse memory
-		size_t nBytes = number_of_channels * number_of_frames * (int32)ceil((float)bits_per_sample / 8.);
-		audioBuffer_.insert(audioBuffer_.end(), (uint8_t*)audio_data, (uint8_t*)audio_data + nBytes);
-		samplesReceived_ += number_of_frames;
+		if (!IsValid(soundWave_))
+		{
+			if (!isCreatingSounWave_)
+			{
+				AsyncTask(ENamedThreads::GameThread, [=]() {
+					setupSoundWave(number_of_channels, bits_per_sample, sample_rate);
+				});
+				isCreatingSounWave_ = true;
+			}
+			return;
+		}
+		else
+		{
+			AudioDataDescription add{ number_of_channels, bits_per_sample, sample_rate };
+			if (adataDesc_ != add)
+			{
+				soundWave_->SetSampleRate(sample_rate);
+				soundWave_->NumChannels = number_of_channels;
+				soundWave_->SampleByteSize = (int32)ceil((float)bits_per_sample / 8.);
+				adataDesc_ = add;
+			}
+
+			size_t nBytes = number_of_channels * number_of_frames * (int32)ceil((float)bits_per_sample / 8.);
+			soundWave_->QueueAudio((uint8*)audio_data, nBytes);
+		}
+
+		/*size_t nBytes = number_of_channels * number_of_frames * (int32)ceil((float)bits_per_sample / 8.);
+		audioBuffer_->enque((uint8_t*)audio_data, nBytes);
+		samplesReceived_ += number_of_frames;*/
 	}
 }
 
@@ -665,6 +689,7 @@ UVideoCoreMediaReceiver::setupSoundWave(int nChannels, int bps, int sampleRate)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Failed to create sound wave object"));
 	}
+	isCreatingSounWave_ = false;
 }
 
 int32 
@@ -672,21 +697,21 @@ UVideoCoreMediaReceiver::GeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamp
 {
 	FScopeLock Lock(&audioSyncContext_);
 
-	int32 bytesPerSample = (int32)ceil((float)bps_ / 8.);
-	int32 nCopiedSamples = 0;
-	
-	int32 bytesAsked = bytesPerSample * NumSamples;
-	int32 bytesCopy = (bytesAsked > audioBuffer_.size() ? audioBuffer_.size() : bytesAsked);
+	int32 bytesPerSample = (int32)ceil(((double)adataDesc_.bps_) / 8.);
+	if (bytesPerSample)
+	{
+		int32 nCopiedSamples = 0;
 
-	OutAudio.Reset();
-	OutAudio.AddZeroed(bytesCopy);
-	FMemory::Memcpy(OutAudio.GetData(), audioBuffer_.data(), bytesCopy);
-	nCopiedSamples = bytesCopy / bytesPerSample;
-	audioBuffer_.erase(audioBuffer_.begin(), audioBuffer_.begin() + bytesCopy);
+		int32 bytesAsked = bytesPerSample * NumSamples;
+		
+		OutAudio.Reset();
 
-	//UE_LOG(LogTemp, Log, TEXT("buffer level %d bytes"), audioBuffer_.size());
+		int32 bytesCopy = audioBuffer_->deque(OutAudio.GetData(), bytesAsked);
 
-	return nCopiedSamples;
+		nCopiedSamples = bytesCopy / bytesPerSample;
+		return nCopiedSamples;
+	}
+	return 0;
 }
 
 void
