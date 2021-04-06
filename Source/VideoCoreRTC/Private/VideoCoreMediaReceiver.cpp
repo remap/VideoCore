@@ -13,6 +13,7 @@
 #include "third_party/libyuv/include/libyuv.h"
 #include "VideoCoreSoundWave.h"
 #include "CULambdaRunnable.h"
+#include "Misc/ScopeTryLock.h"
 
 #include <Engine/Texture.h>
 #include <ExternalTexture.h>
@@ -38,7 +39,6 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, audioConsumer_(nullptr)
 	, videoConsumer_(nullptr)
 	, audioBuffer_(make_shared<videocore::AudioBuffer>(256, 2048))
-	, textureInitActive_(false)
 {
 	initTexture(kTextureWidth, kTextureHeight);
 }
@@ -49,10 +49,10 @@ UVideoCoreMediaReceiver::~UVideoCoreMediaReceiver()
 
 void UVideoCoreMediaReceiver::Init(UVideoCoreSignalingComponent* vcSiganlingComponent)
 {
+	UE_LOG(LogTemp, Log, TEXT("VideoCoreMediaReceiver::Init"));
+
 	vcComponent_ = vcSiganlingComponent;
-	
-	FCoreDelegates::OnEndFrameRT.RemoveAll(this);
-	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaReceiver::captureVideoFrame);
+	setupRenderThreadCallback();
 
 	// setup callbacks
 	setupSocketCallbacks();
@@ -251,6 +251,12 @@ void UVideoCoreMediaReceiver::BeginDestroy()
 }
 
 // ****
+void UVideoCoreMediaReceiver::setupRenderThreadCallback()
+{
+	FCoreDelegates::OnEndFrameRT.RemoveAll(this);
+	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaReceiver::captureVideoFrame);
+}
+
 void UVideoCoreMediaReceiver::setupSocketCallbacks()
 {
 	FDelegateHandle hndl = 
@@ -409,7 +415,7 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind, const string& reason)
 	{
 		if (kind == "video")
 		{
-			FScopeLock RenderLock(&renderSyncContext_);
+			FScopeLock RenderLock(&frameBufferSync_);
 
 			for (auto t : stream_->GetVideoTracks())
 			{
@@ -441,7 +447,7 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind, const string& reason)
 
 	if (videoConsumer_ && kind == "video")
 	{
-		FScopeLock RenderLock(&renderSyncContext_);
+		FScopeLock RenderLock(&frameBufferSync_);
 
 		producerId = videoConsumer_->GetId();
 		videoConsumer_->Close();
@@ -522,7 +528,7 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 
 		if (vfBuf)
 		{
-			FScopeLock RenderLock(&renderSyncContext_);
+			FScopeLock RenderLock(&frameBufferSync_);
 			assert(frameBgraBuffer_);
 
 			libyuv::I420ToARGB
@@ -543,6 +549,14 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("Unsupported incoming frame type: %d"), t);
+	}
+
+	// sometimes, the callback gets cleared
+	// track here https://udn.unrealengine.com/s/question/0D54z00006u2hUxCAI/onendframert-callback-gets-reset
+	if (!FCoreDelegates::OnEndFrameRT.IsBoundToObject(this))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s capture frame callback got reset"), *clientId);
+		setupRenderThreadCallback();
 	}
 }
 
@@ -591,35 +605,37 @@ UVideoCoreMediaReceiver::OnData(const void* audio_data, int bits_per_sample, int
 void
 UVideoCoreMediaReceiver::captureVideoFrame()
 {
-	if (hasNewFrame_)
-	{
-		FScopeLock RenderLock(&renderSyncContext_);
+	FScopeTryLock TryTextureLock(&videoTextureSync_);
 
+	if (TryTextureLock.IsLocked() && hasNewFrame_)
+	{
+		// have to check texture resource size instead of GetSizeX()
+		// more info here https://udn.unrealengine.com/s/question/0D54z00006u2GRvCAM/correct-way-to-update-utexture-size
 		bool textureInitialized = IsValid(videoTexture_) &&
 			videoTexture_->Resource->TextureRHI->GetSizeXYZ().X == frameWidth_ &&
 			videoTexture_->Resource->TextureRHI->GetSizeXYZ().Y == frameHeight_;
-
-		if (textureInitActive_) return;
 
 		if (!textureInitialized)
 		{
 			assert(frameWidth_ > 0); assert(frameHeight_ > 0);
 
-			textureInitActive_ = true;
+			//textureInitActive_ = true;
 			FCULambdaRunnable::RunShortLambdaOnGameThread([this]() {
-				FScopeLock RenderLock(&renderSyncContext_);
+				FScopeLock TextureLock(&videoTextureSync_);
 
 				UE_LOG(LogTemp, Log, TEXT("texture mismatch. need %dx%d current %dx%d"),
 					frameWidth_, frameHeight_,
-					IsValid(videoTexture_) ? videoTexture_->GetSizeX() : 0,
-					IsValid(videoTexture_) ? videoTexture_->GetSizeY() : 0);
+					IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().X : 0,
+					IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().Y : 0);
 
 				initTexture(frameWidth_, frameHeight_);
-				textureInitActive_ = false;
+				//textureInitActive_ = false;
 			});
 		}
 		else
 		{
+			FScopeLock RenderLock(&frameBufferSync_);
+
 			FUpdateTextureRegion2D region;
 			region.SrcX = 0;
 			region.SrcY = 0;
@@ -647,11 +663,11 @@ UVideoCoreMediaReceiver::initTexture(int width, int height)
 	}
 	else if (videoTexture_->GetSizeX() != width || videoTexture_->GetSizeY() != height)
 	{
-		videoTexture_->ReleaseResource();
+		//videoTexture_->ReleaseResource();
 
-		if (FTextureResource* TextureResource = new FTextureResource())
+		if (FTextureResource* TextureResource = videoTexture_->Resource)// new FTextureResource())
 		{
-			videoTexture_->Resource = TextureResource;
+			//videoTexture_->Resource = TextureResource;
 
 			// Set the default video texture to reference nothing
 			TRefCountPtr<FRHITexture2D> RenderableTexture;

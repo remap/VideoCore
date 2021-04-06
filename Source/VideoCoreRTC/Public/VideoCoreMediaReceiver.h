@@ -141,6 +141,7 @@ private: // UE
 
 private: // native
 
+	void setupRenderThreadCallback();
 	void setupSocketCallbacks();
 	void createStream();
 	void consume(mediasoupclient::RecvTransport* t, const std::string& streamId);
@@ -162,10 +163,11 @@ private: // native
 	rtc::scoped_refptr<webrtc::MediaStreamInterface> stream_;
 
 	// video rendering
-	FCriticalSection renderSyncContext_;
+	FCriticalSection frameBufferSync_;
+	FCriticalSection videoTextureSync_;
 	uint32_t frameWidth_, frameHeight_, bufferSize_;
 	uint8_t* frameBgraBuffer_;
-	std::atomic_bool hasNewFrame_, textureInitActive_;
+	std::atomic_bool hasNewFrame_;
 	UTexture2D* videoTexture_;
 	size_t framesReceived_; // TODO: multi-thread read access -- make atomic?
 
