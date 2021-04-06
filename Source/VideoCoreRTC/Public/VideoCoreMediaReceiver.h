@@ -165,7 +165,7 @@ private: // native
 	FCriticalSection renderSyncContext_;
 	uint32_t frameWidth_, frameHeight_, bufferSize_;
 	uint8_t* frameBgraBuffer_;
-	bool needFrameBuffer_, hasNewFrame_;
+	std::atomic_bool hasNewFrame_, textureInitActive_;
 	UTexture2D* videoTexture_;
 	size_t framesReceived_; // TODO: multi-thread read access -- make atomic?
 

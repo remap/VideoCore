@@ -12,6 +12,7 @@
 #include "Texture2DResource.h"
 #include "third_party/libyuv/include/libyuv.h"
 #include "VideoCoreSoundWave.h"
+#include "CULambdaRunnable.h"
 
 #include <Engine/Texture.h>
 #include <ExternalTexture.h>
@@ -37,6 +38,7 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, audioConsumer_(nullptr)
 	, videoConsumer_(nullptr)
 	, audioBuffer_(make_shared<videocore::AudioBuffer>(256, 2048))
+	, textureInitActive_(false)
 {
 	initTexture(kTextureWidth, kTextureHeight);
 }
@@ -493,6 +495,7 @@ UVideoCoreMediaReceiver::OnTransportClose(mediasoupclient::Consumer* consumer)
 		stopStreaming("video", "transport closed");
 }
 
+// called by webrtc on worker thread
 void
 UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 {
@@ -500,38 +503,41 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 		vf.width(), vf.height(), vf.timestamp(), vf.size(),
 		vf.is_texture());*/
 
-	if (!videoTexture_ ||
-		frameWidth_ != vf.width() ||
-		frameHeight_ != vf.height() ||
-		!frameBgraBuffer_)
-	{
-		FScopeLock RenderLock(&renderSyncContext_);
+	int vfWidth = vf.width();
+	int vfHeight = vf.height();
 
-		frameWidth_ = vf.width();
-		frameHeight_ = vf.height();
-		needFrameBuffer_ = true;
+	if (!frameBgraBuffer_ ||
+		frameWidth_ != vfWidth || frameHeight_ != vfHeight)
+	{
+		UE_LOG(LogTemp, Log, TEXT("need frame buffer %dx%d (current %dx%d)"),
+			vfWidth, vfHeight, frameWidth_, frameHeight_);
+
+		initFrameBuffer(vfWidth, vfHeight);
 	}
 
 	webrtc::VideoFrameBuffer::Type t = vf.video_frame_buffer()->type();
 	if (t == webrtc::VideoFrameBuffer::Type::kI420)
 	{
-		const webrtc::I420BufferInterface *vfBuf = vf.video_frame_buffer()->GetI420();
+		const webrtc::I420BufferInterface* vfBuf = vf.video_frame_buffer()->GetI420();
 
 		if (vfBuf)
 		{
 			FScopeLock RenderLock(&renderSyncContext_);
+			assert(frameBgraBuffer_);
 
-			if (frameBgraBuffer_ && !needFrameBuffer_)
-			{
-				libyuv::I420ToARGB
+			libyuv::I420ToARGB
 				//libyuv::I420ToBGRA
-					(vfBuf->DataY(), vfBuf->StrideY(),
-						vfBuf->DataU(), vfBuf->StrideU(),
-						vfBuf->DataV(), vfBuf->StrideV(),
-						frameBgraBuffer_, 4 * frameWidth_, frameWidth_, frameHeight_);
-				hasNewFrame_ = true;
-				framesReceived_++;
-			}
+				(vfBuf->DataY(), vfBuf->StrideY(),
+					vfBuf->DataU(), vfBuf->StrideU(),
+					vfBuf->DataV(), vfBuf->StrideV(),
+					frameBgraBuffer_, 4 * frameWidth_, frameWidth_, frameHeight_);
+
+			framesReceived_++;
+			hasNewFrame_ = true;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Incoming frame empty buffer"));
 		}
 	}
 	else
@@ -581,31 +587,52 @@ UVideoCoreMediaReceiver::OnData(const void* audio_data, int bits_per_sample, int
 	}
 }
 
+// called on game render thread
 void
 UVideoCoreMediaReceiver::captureVideoFrame()
 {
-	FScopeLock RenderLock(&renderSyncContext_);
-
-	if (needFrameBuffer_)
+	if (hasNewFrame_)
 	{
-		initFrameBuffer(frameWidth_, frameHeight_);
-		needFrameBuffer_ = false;
-	}
+		FScopeLock RenderLock(&renderSyncContext_);
 
-	if (frameBgraBuffer_ && hasNewFrame_)
-	{
-		FUpdateTextureRegion2D region;
-		region.SrcX = 0;
-		region.SrcY = 0;
-		region.DestX = 0;
-		region.DestY = 0;
-		region.Width = frameWidth_;
-		region.Height = frameHeight_;
+		bool textureInitialized = IsValid(videoTexture_) &&
+			videoTexture_->Resource->TextureRHI->GetSizeXYZ().X == frameWidth_ &&
+			videoTexture_->Resource->TextureRHI->GetSizeXYZ().Y == frameHeight_;
 
-		FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
-		RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, frameWidth_ * 4, frameBgraBuffer_);
+		if (textureInitActive_) return;
 
-		hasNewFrame_ = false;
+		if (!textureInitialized)
+		{
+			assert(frameWidth_ > 0); assert(frameHeight_ > 0);
+
+			textureInitActive_ = true;
+			FCULambdaRunnable::RunShortLambdaOnGameThread([this]() {
+				FScopeLock RenderLock(&renderSyncContext_);
+
+				UE_LOG(LogTemp, Log, TEXT("texture mismatch. need %dx%d current %dx%d"),
+					frameWidth_, frameHeight_,
+					IsValid(videoTexture_) ? videoTexture_->GetSizeX() : 0,
+					IsValid(videoTexture_) ? videoTexture_->GetSizeY() : 0);
+
+				initTexture(frameWidth_, frameHeight_);
+				textureInitActive_ = false;
+			});
+		}
+		else
+		{
+			FUpdateTextureRegion2D region;
+			region.SrcX = 0;
+			region.SrcY = 0;
+			region.DestX = 0;
+			region.DestY = 0;
+			region.Width = frameWidth_;
+			region.Height = frameHeight_;
+
+			FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
+			RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, frameWidth_ * 4, frameBgraBuffer_);
+
+			hasNewFrame_ = false;
+		}
 	}
 }
 
@@ -636,11 +663,13 @@ UVideoCoreMediaReceiver::initTexture(int width, int height)
 
 			TextureResource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
 
-			ENQUEUE_RENDER_COMMAND(FNDIMediaTexture2DUpdateTextureReference)(
-				[&](FRHICommandListImmediate& RHICmdList) {
+			ENQUEUE_RENDER_COMMAND(FVCVideoTexture2DUpdateTextureReference)(
+				[this, RenderableTexture](FRHICommandListImmediate& RHICmdList) {
 
-				RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, TextureResource->TextureRHI);
+				RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, RenderableTexture);
 			});
+
+			FlushRenderingCommands();
 		}
 	}
 }
@@ -648,8 +677,6 @@ UVideoCoreMediaReceiver::initTexture(int width, int height)
 void
 UVideoCoreMediaReceiver::initFrameBuffer(int width, int height)
 {
-	initTexture(width, height);
-
 	// TODO: replace with smarter realloc-y logic
 	if (frameBgraBuffer_)
 		free(frameBgraBuffer_);
@@ -661,8 +688,7 @@ UVideoCoreMediaReceiver::initFrameBuffer(int width, int height)
 	memset(frameBgraBuffer_, 0, bufferSize_);
 	hasNewFrame_ = false;
 
-	assert(videoTexture_->GetSizeX() == frameWidth_);
-	assert(videoTexture_->GetSizeY() == frameHeight_);
+	UE_LOG(LogTemp, Log, TEXT("frame buffer initialized - %d bytes"), bufferSize_);
 }
 
 void
