@@ -302,7 +302,7 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 	if (t)
 	{
 		// schedule cleanup on game thread
-		FCULambdaRunnable::RunShortLambdaOnGameThread([t]() {
+		FCULambdaRunnable::RunShortLambdaOnGameThread([this, t]() {
 			if (!t->IsClosed())
 			{
 				UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
@@ -310,14 +310,14 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 			}
 
 			delete t;
-		});
 
-		// sorry about that
-		if (is_same<T, mediasoupclient::RecvTransport>::value)
-			recvTransportConnectCb_.clear();
-		// TODO: fix crash below
-		//if (is_same<T, mediasoupclient::SendTransport>::value)
-		//	transportProduceCb_.clear();
+			// sorry about that
+			if (is_same<T, mediasoupclient::RecvTransport>::value)
+				recvTransportConnectCb_.clear();
+			// TODO: fix crash below
+			if (is_same<T, mediasoupclient::SendTransport>::value)
+				transportProduceCb_.clear();
+		});
 
 		// nullify pointer now
 		t = nullptr;
@@ -363,10 +363,10 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 	//	completed
 
 	FString str(connectionState.c_str());
-	UE_LOG(LogTemp, Log, TEXT("Transport connection state change %s"), *str);
+	UE_LOG(LogTemp, Log, TEXT("Transport (%s) connection state change %s"), ANSI_TO_TCHAR(transport->GetId().c_str()), *str);
 
-	if (connectionState == "failed" ||
-		connectionState == "disconnected")
+	if (connectionState == "failed")// ||
+		//connectionState == "disconnected")
 	{
 		if (transport == recvTransport_)
 			cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
@@ -375,8 +375,11 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 	}
 
 	if (connectionState == "connected" && transport == recvTransport_)
-		sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
-		//for (auto cb : recvTransportConnectCb_) cb();
+		FCULambdaRunnable::RunShortLambdaOnGameThread([this]() {
+			for (auto cb : recvTransportConnectCb_) cb();
+		});
+		//sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
+		
 }
 
 std::future<std::string> 
