@@ -17,7 +17,7 @@
 #include "SIOJConvert.h"
 
 // change this to true to use WebrRTC's default audio device module
-static bool useDefaultAudioDeviceModule = false; 
+static bool useDefaultAudioDeviceModule = true; 
 static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
 
 /* MediaStreamTrack holds reference to the threads of the PeerConnectionFactory.
@@ -163,24 +163,6 @@ void createWebRtcFactory(bool useDefaultAdm)
 	if (!useDefaultAdm && !adm)
 	{
 		UE_LOG(LogTemp, Error, TEXT("audio capture module creation errored. using default ADM instead"));
-	}
-
-	webrtc::AudioDeviceModule::AudioLayer l;
-	adm->ActiveAudioLayer(&l);
-
-	bool isAdm = adm;
-	if (isAdm)
-	{
-		UE_LOG(LogTemp, Log, TEXT("ADM is false"));
-	}
-
-	if (adm->Initialized())
-	{
-		UE_LOG(LogTemp, Log, TEXT("ADM Initialized. layer %d %d"), l, isAdm);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Log, TEXT("ADM is NOT Initialized"));
 	}
 
 	factory = webrtc::CreatePeerConnectionFactory(
