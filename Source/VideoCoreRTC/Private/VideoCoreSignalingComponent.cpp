@@ -98,10 +98,14 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 		sIOClientComponent_->Disconnect();
 		sIOClientComponent_->SetupCallbacks();
 
+#if !UE_EDITOR
 		static once_flag f;
 		call_once(f, [this] {
+#endif
 			setupVideoCoreServerCallbacks();
+#if !UE_EDITOR
 		});
+#endif
 
 		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
 		if (!clientName.IsEmpty())
