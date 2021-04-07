@@ -11,6 +11,7 @@
 #include "Components/ActorComponent.h"
 #include "SocketIOClientComponent.h"
 #include "SIOJsonValue.h"
+#include "VideoCoreRtcTypes.h"
 
 #pragma warning(disable:4596)
 #pragma warning(disable:4800)
@@ -26,6 +27,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSubsystemFailedToInit, 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcNewClient, FString, ClientName, FString, ClientId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcClientLeft, FString, ClientId);
+
+DECLARE_DYNAMIC_DELEGATE_OneParam(FVideoCoreMediaServerOnClientRoster, const TArray<FVideoCoreMediaServerClientInfo>&, roster);
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewClient, FString, FString);
 DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcInternalClientLeft, FString);
@@ -52,7 +55,14 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void connect(FString url, FString path = TEXT("server"));
 
+	UFUNCTION(BlueprintCallable)
+	TArray<FVideoCoreMediaServerClientInfo> getClientRoster() const;
+
+	UFUNCTION(BlueprintCallable)
+	void fetchClientRoster(FVideoCoreMediaServerOnClientRoster onRoster);
+
 public:
+	// Callbacks
 	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcSignalingConnected OnRtcSignalingConnected;
 
@@ -74,11 +84,24 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcClientLeft OnClientLeft;
 
+	// Properties
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly)
 	FString clientId;
 
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly)
 	FString clientName;
+
+	UPROPERTY(BlueprintReadOnly)
+	ESignalingClientState state;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString lastError;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString url;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString serverPath;
 
 	FVideoCoreRtcInternalNewClient onNewClient_;
 	FVideoCoreRtcInternalClientLeft onClientLeft_;
@@ -114,6 +137,11 @@ private: // UE
 	void onDisconnected(TEnumAsByte<ESIOConnectionCloseReason> Reason);
 	UFUNCTION()
 	void onNamespaceDisconnected(FString nspc);
+	UFUNCTION()
+	FVideoCoreMediaServerClientInfo& getClientRecord(FString cId);
+
+	UPROPERTY()
+	TMap<FString, FVideoCoreMediaServerClientInfo> clientRoster;
 
 	FVideoCoreMediaReceiverTransportReady onTransportReady_;
 

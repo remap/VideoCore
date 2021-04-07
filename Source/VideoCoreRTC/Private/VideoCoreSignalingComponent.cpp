@@ -24,6 +24,7 @@ UVideoCoreSignalingComponent::UVideoCoreSignalingComponent()
 
 void UVideoCoreSignalingComponent::InitializeComponent()
 {
+	state = ESignalingClientState::NotConnected;
 	sIOClientComponent_ = Cast<USocketIOClientComponent>(this->GetOwner()->GetComponentByClass(USocketIOClientComponent::StaticClass()));
 	if (!sIOClientComponent_)
 	{
@@ -55,15 +56,52 @@ void UVideoCoreSignalingComponent::BeginDestroy()
 	Super::BeginDestroy();
 }
 
+TArray<FVideoCoreMediaServerClientInfo> UVideoCoreSignalingComponent::getClientRoster() const
+{
+	TArray<FVideoCoreMediaServerClientInfo> roster;
+
+	for (auto t : clientRoster)
+		roster.Add(t.Value);
+
+	return roster;
+}
+
+void UVideoCoreSignalingComponent::fetchClientRoster(FVideoCoreMediaServerOnClientRoster onRoster)
+{
+	sIOClientComponent_->EmitNative(TEXT("getClientList"), nullptr,
+		[this, onRoster](auto response) {
+
+		for (auto v : response[0]->AsArray())
+		{
+			auto m = v->AsObject();
+			int nProducers = (int)m->GetNumberField("nProducers");
+			int nConsumers = (int)m->GetNumberField("nConsumers");
+			FVideoCoreMediaServerClientInfo cInfo(m->GetStringField("id"), 
+				m->GetStringField("name"),
+				(nProducers ? EClientState::Producing : EClientState::NotProducing),
+				nProducers, nConsumers);
+
+			this->clientRoster.Add(cInfo.clientId, cInfo);
+		}
+
+		onRoster.ExecuteIfBound(this->getClientRoster());
+	});
+}
+
 void UVideoCoreSignalingComponent::connect(FString url, FString path)
 {
 	if (sIOClientComponent_)
 	{
 		UE_LOG(LogTemp, Log, TEXT("Connecting %s (%s)..."), *url, *path);
 
+		clientRoster.Empty();
 		sIOClientComponent_->Disconnect();
 		sIOClientComponent_->SetupCallbacks();
-		setupVideoCoreServerCallbacks();
+
+		static once_flag f;
+		call_once(f, [this] {
+			setupVideoCoreServerCallbacks();
+		});
 
 		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
 		if (!clientName.IsEmpty())
@@ -72,6 +110,10 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 			query->SetStringField(TEXT("id"), clientId);
 
 		sIOClientComponent_->Connect(url, path, query);
+		state = ESignalingClientState::Connecting;
+		
+		this->url = url;
+		this->serverPath = path;
 	}
 }
 
@@ -133,15 +175,18 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 		FString clientName = m->GetStringField(TEXT("name"));
 		FString clientId = m->GetStringField(TEXT("id"));
 
-		UE_LOG(LogTemp, Log, TEXT("new client %s %s"), *clientName, *clientId);
+		getClientRecord(clientId) = FVideoCoreMediaServerClientInfo(clientId, clientName, EClientState::NotProducing, 0, 0);
 
+		UE_LOG(LogTemp, Log, TEXT("new client %s %s"), *clientName, *clientId);
+		
 		OnNewClientConnected.Broadcast(clientName, clientId);
-		onNewClient_ .Broadcast(clientName, clientId);
-		// TODO: add to local client roster
+		onNewClient_.Broadcast(clientName, clientId);
 	});
 
 	sIOClientComponent_->OnNativeEvent(TEXT("clientDisconnected"), [&](const FString& msg, const TSharedPtr<FJsonValue>& data) {
 		UE_LOG(LogTemp, Log, TEXT("client disconnected %s %s"), *msg, *USIOJConvert::ToJsonString(data));
+
+		clientRoster.Remove(*USIOJConvert::ToJsonString(data));
 
 		OnClientLeft.Broadcast(data->AsString());
 		onClientLeft_.Broadcast(data->AsString());
@@ -154,6 +199,9 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 		FString clientId = m->GetStringField(TEXT("clientId"));
 		FString producerId = m->GetStringField(TEXT("producerId"));
 		FString kind = m->GetStringField(TEXT("kind"));
+
+		getClientRecord(clientId).state = EClientState::Producing;
+		getClientRecord(clientId).nProducers += 1;
 
 		UE_LOG(LogTemp, Log, TEXT("client %s created new producer %s (%s)"), *clientId, *producerId, *kind);
 		onNewProducer_.Broadcast(clientId, producerId, kind);
@@ -171,13 +219,16 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 
 	sIOClientComponent_->OnNativeEvent(TEXT("forbidden"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
 		auto m = response->AsObject();
+		this->lastError = FString("forbidden");
 
 		if (m->HasField("error"))
 		{
+			this->lastError += ": " + m->GetStringField("error");
 			OnRtcSignalingFailure.Broadcast(m->GetStringField("error"));
 		}
 		else
 			OnRtcSignalingFailure.Broadcast("Unknown");
+
 	});
 }
 
@@ -210,6 +261,7 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 			}
 			else
 			{
+				this->lastError = FString("Failed to load mediasoupclient Device");
 				OnRtcSubsystemFailed.Broadcast("Failed to load mediasoupclient Device");
 			}
 		}
@@ -222,6 +274,7 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 		},
 			[this](string reason)
 		{
+			this->lastError = FString(reason.c_str());
 			OnRtcSubsystemFailed.Broadcast(reason.c_str());
 		});
 	});
@@ -379,7 +432,6 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 			for (auto cb : recvTransportConnectCb_) cb();
 		});
 		//sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
-		
 }
 
 std::future<std::string> 
@@ -417,6 +469,7 @@ UVideoCoreSignalingComponent::OnProduceData(mediasoupclient::SendTransport*,
 void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool bIsReconnection)
 {
 	UE_LOG(LogTemp, Log, TEXT("VideoCore media server connected. Is Reconnect: %d"), bIsReconnection);
+	state = ESignalingClientState::Connected;
 	OnRtcSignalingConnected.Broadcast();
 }
 
@@ -428,6 +481,7 @@ void UVideoCoreSignalingComponent::onDisconnected(TEnumAsByte<ESIOConnectionClos
 	cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
 	cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
 
+	state = ESignalingClientState::NotConnected;
 	OnRtcSiganlingDisconnected.Broadcast((Reason == CLOSE_REASON_NORMAL ? "NORMAL" : "DROP"));
 }
 
@@ -439,4 +493,12 @@ void UVideoCoreSignalingComponent::onNamespaceDisconnected(FString nmspc)
 	cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
 
 	OnRtcSiganlingDisconnected.Broadcast("Server disonnect");
+}
+
+FVideoCoreMediaServerClientInfo& UVideoCoreSignalingComponent::getClientRecord(FString clientId)
+{
+	if (!clientRoster.Contains(clientId))
+		clientRoster.Add(clientId);
+
+	return clientRoster[clientId];
 }

@@ -551,6 +551,7 @@ UVideoCoreMediaReceiver::OnFrame(const webrtc::VideoFrame& vf)
 		UE_LOG(LogTemp, Error, TEXT("Unsupported incoming frame type: %d"), t);
 	}
 
+	// TODO: track this
 	// sometimes, the callback gets cleared
 	// track here https://udn.unrealengine.com/s/question/0D54z00006u2hUxCAI/onendframert-callback-gets-reset
 	if (!FCoreDelegates::OnEndFrameRT.IsBoundToObject(this))

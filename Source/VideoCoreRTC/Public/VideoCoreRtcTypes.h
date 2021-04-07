@@ -11,6 +11,13 @@
 #include "VideoCoreRtcTypes.generated.h"
 
 UENUM(BlueprintType)
+enum class ESignalingClientState : uint8 {
+	NotConnected UMETA(DisplayName = "Not Connected"),
+	Connecting UMETA(DisplayName = "Connecting"),
+	Connected UMETA(DisplayName = "Connected")
+};
+
+UENUM(BlueprintType)
 enum class EClientState : uint8 {
 	Offline UMETA(DisplayName = "Offline"),
 	NotProducing UMETA(DisplayName = "Not Producing"),
@@ -62,4 +69,42 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 		int FramesReceived;
+};
+
+USTRUCT(BlueprintType, Blueprintable, Category = "VideoCore RTC", META = (DisplayName = "RTC Media Server Client Info"))
+struct VIDEOCORERTC_API FVideoCoreMediaServerClientInfo
+{
+	GENERATED_USTRUCT_BODY();
+public:
+	FVideoCoreMediaServerClientInfo() {}
+	FVideoCoreMediaServerClientInfo(FString cId, FString cName, EClientState cState, int np, int nc) 
+		: clientId(cId)
+		, clientName(cName)
+		, state(cState)
+		, nProducers(np)
+		, nConsumers(nc)
+	{}
+
+	UPROPERTY(BlueprintReadOnly)
+		FString clientId;
+
+	UPROPERTY(BlueprintReadOnly)
+		FString clientName;
+
+	UPROPERTY(BlueprintReadOnly)
+		EClientState state;
+
+	UPROPERTY(BlueprintReadOnly)
+		int nProducers;
+
+	UPROPERTY(BlueprintReadOnly)
+		int nConsumers;
+};
+
+UCLASS(ClassGroup = (VideoCoreRTC), Blueprintable, meta = (BlueprintSpawnableComponent))
+class VIDEOCORERTC_API UClientInfoListItem : public UObject {
+	GENERATED_BODY()
+public:
+	UPROPERTY(BlueprintReadWrite)
+	FVideoCoreMediaServerClientInfo clientInfo_;
 };
