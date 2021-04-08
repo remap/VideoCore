@@ -77,6 +77,9 @@ public: // UE
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly, Category = "Broadcast Settings", META = (DisplayName = "Frame Size", AllowPrivateAccess = true))
 	FIntPoint FrameSize = FIntPoint(1920, 1080);
 
+	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly, Category = "Broadcast Settings", META = (DisplayName = "Stream Bitrates (bps)", AllowPrivateAccess = true))
+	TArray<int> Bitrates;
+
 public: // native
 
 protected: // UE
@@ -102,6 +105,7 @@ private: // native
 	// mediasoupclient::Producer::Listener
 	void OnTransportClose(mediasoupclient::Producer*) override;
 	
+	void setupRenderThreadCallback();
 	bool startStream(std::string id, EMediaTrackKind trackKind);
 	void stopStream(EMediaTrackKind trackKind, std::string reason);
 	void shutdown();

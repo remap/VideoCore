@@ -32,9 +32,7 @@ bool UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingCompon
 
 	if (vcComponent_)
 	{
-		FCoreDelegates::OnEndFrameRT.RemoveAll(this);
-		FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaSender::tryCopyRenderTarget);
-
+		setupRenderThreadCallback();
 		vcComponent_->invokeWhenSendTransportReady([this](const mediasoupclient::SendTransport*) {
 			createStream();
 
@@ -88,6 +86,12 @@ void UVideoCoreMediaSender::OnTransportClose(mediasoupclient::Producer* p)
 
 	stopStream(EMediaTrackKind::Video, "transport closed");
 	stopStream(EMediaTrackKind::Audio, "transport closed");
+}
+
+void UVideoCoreMediaSender::setupRenderThreadCallback()
+{
+	FCoreDelegates::OnEndFrameRT.RemoveAll(this);
+	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaSender::tryCopyRenderTarget);
 }
 
 bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKind)
@@ -283,13 +287,24 @@ void UVideoCoreMediaSender::createProducer()
 	{
 		// TODO: setup layers here
 		vector<webrtc::RtpEncodingParameters> encodings;
-		webrtc::RtpEncodingParameters p;
-		p.max_bitrate_bps = 100000;
-		encodings.push_back(p);
-		p.max_bitrate_bps = 300000;
-		encodings.push_back(p);
-		p.max_bitrate_bps = 900000;
-		encodings.push_back(p);
+
+		if (Bitrates.Num())
+		{
+			for (auto bps : Bitrates)
+			{
+				// TODO: expand for configurable FPS and other settings
+				webrtc::RtpEncodingParameters p;
+				p.max_bitrate_bps = bps;
+				encodings.push_back(p);
+			}
+		}
+		else
+		{
+			webrtc::RtpEncodingParameters p;
+			p.max_bitrate_bps = 500000;
+			encodings.push_back(p);
+			Bitrates.Add(p.max_bitrate_bps.value());
+		}
 
 		vcComponent_->invokeOnTransportProduce(videoTrack_->id(), 
 			[this](mediasoupclient::SendTransport* t, const std::string& kind,
@@ -458,5 +473,14 @@ void UVideoCoreMediaSender::trySendFrame()
 	if (videoTrackState_ == EMediaTrackState::Live && videoSource_)
 	{
 		videoSource_->PublishFrame();
+	}
+	
+	// TODO: track this
+	// sometimes, the callback gets cleared
+	// track here https://udn.unrealengine.com/s/question/0D54z00006u2hUxCAI/onendframert-callback-gets-reset
+	if (!FCoreDelegates::OnEndFrameRT.IsBoundToObject(this))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("send frame callback got reset - media sender"));
+		setupRenderThreadCallback();
 	}
 }
