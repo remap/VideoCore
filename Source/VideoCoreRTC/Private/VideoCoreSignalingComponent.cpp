@@ -46,12 +46,7 @@ void UVideoCoreSignalingComponent::BeginPlay()
 
 void UVideoCoreSignalingComponent::BeginDestroy()
 {
-	if (recvTransport_)
-	{
-		recvTransport_->Close();
-		delete recvTransport_;
-	}
-
+	shutdown();
 	// Call the base implementation of 'BeginDestroy'
 	Super::BeginDestroy();
 }
@@ -365,7 +360,6 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 				UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
 				t->Close(); // this should trigger OnTransportClose for all producers/consumers
 			}
-
 			delete t;
 
 			// sorry about that
@@ -379,6 +373,14 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 		// nullify pointer now
 		t = nullptr;
 	}
+}
+
+void UVideoCoreSignalingComponent::shutdown()
+{
+	if (recvTransport_)
+		cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+	if (sendTransport_)
+		cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
 }
 
 std::future<void>

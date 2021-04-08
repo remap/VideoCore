@@ -170,4 +170,5 @@ private: // native
 	void setupProducerTransport(mediasoupclient::Device&);
 	template<typename T>
 	void cleanupTransport(T*& t);
+	void shutdown();
 };
