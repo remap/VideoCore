@@ -257,6 +257,7 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 
 			setupConsumerTransport(d);
 			setupProducerTransport(d);
+			sendMyInfo();
 
 			OnRtcSubsystemInitialized.Broadcast(uobj);
 		},
@@ -266,6 +267,15 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 			OnRtcSubsystemFailed.Broadcast(reason.c_str());
 		});
 	});
+}
+
+void UVideoCoreSignalingComponent::sendMyInfo()
+{
+	USIOJsonObject* info = USIOJsonObject::ConstructJsonObject(this);
+	if (videocore::getDevice().IsLoaded())
+		info->SetObjectField(TEXT("rtpCapabilities"), RtpCapabilities);
+
+	sIOClientComponent_->Emit(TEXT("setClientInfo"), USIOJsonValue::ConstructJsonValueObject(info, this));
 }
 
 void UVideoCoreSignalingComponent::setupConsumerTransport(mediasoupclient::Device& d)

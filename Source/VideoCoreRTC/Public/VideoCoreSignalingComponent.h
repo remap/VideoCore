@@ -169,6 +169,7 @@ private: // native
 
 	void setupVideoCoreServerCallbacks();
 	void initRtcSubsystem();
+	void sendMyInfo();
 	void setupConsumerTransport(mediasoupclient::Device&);
 	void setupProducerTransport(mediasoupclient::Device&);
 	template<typename T>
