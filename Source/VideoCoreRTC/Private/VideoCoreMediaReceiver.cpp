@@ -112,7 +112,7 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 		else
 		{
 			setState(EClientState::Offline);
-			UE_LOG(LogTemp, Warning, TEXT("received error fetching client streams (client id %s): client if offline"),
+			UE_LOG(LogTemp, Warning, TEXT("received error fetching client streams (client id %s): client is offline"),
 				*this->clientId);
 		}
 	});

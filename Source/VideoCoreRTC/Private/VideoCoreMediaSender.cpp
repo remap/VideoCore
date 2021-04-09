@@ -318,7 +318,9 @@ void UVideoCoreMediaSender::createProducer()
 				{ "kind", kind },
 				{ "rtpParameters", rtpParameters }
 			};
-			vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("produce"), fromJsonObject(params), [this, promise](auto response) {
+			vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("produce"), fromJsonObject(params),
+				[this, promise](auto response) 
+			{
 				auto m = response[0]->AsObject();
 				if (m->HasField("id"))
 				{
@@ -328,8 +330,8 @@ void UVideoCoreMediaSender::createProducer()
 				}
 				else
 				{
-					promise->set_exception(make_exception_ptr("server:produce returned invalid response: " +
-						string(TCHAR_TO_ANSI(*USIOJConvert::ToJsonString(m)))));
+					promise->set_exception(make_exception_ptr(runtime_error("server:produce returned invalid response: " +
+						string(TCHAR_TO_ANSI(*m->GetStringField("error"))))));
 
 					UE_LOG(LogTemp, Log, TEXT("Server produce reply error: %s"), *USIOJConvert::ToJsonString(m));
 				}	
