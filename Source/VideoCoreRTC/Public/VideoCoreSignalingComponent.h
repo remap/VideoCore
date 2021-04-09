@@ -103,6 +103,9 @@ public:
 	UPROPERTY(BlueprintReadOnly)
 	FString serverPath;
 
+	UPROPERTY(BlueprintReadOnly)
+	USIOJsonObject* RtpCapabilities;
+
 	FVideoCoreRtcInternalNewClient onNewClient_;
 	FVideoCoreRtcInternalClientLeft onClientLeft_;
 	FVideoCoreRtcInternalNewProducer onNewProducer_;

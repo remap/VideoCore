@@ -246,34 +246,23 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 		UE_LOG(LogTemp, Log, TEXT("GOT ROUTER CAPABILITIES %s"), *USIOJConvert::ToJsonString(m));
 
 		if (!videocore::getDevice().IsLoaded())
-		{
 			videocore::loadMediaSoupDevice(response[0]);
-
-			if (videocore::getDevice().IsLoaded())
-			{
-				USIOJsonObject* uobj = USIOJsonObject::ConstructJsonObject(this);
-				USIOJsonValue* caps = USIOJsonValue::ConstructJsonValue(this,
-					videocore::fromJsonObject(videocore::getDevice().GetRtpCapabilities()));
-				uobj->SetField(TEXT("rtpCapabilities"), caps);
-
-				OnRtcSubsystemInitialized.Broadcast(uobj);
-			}
-			else
-			{
-				this->lastError = FString("Failed to load mediasoupclient Device");
-				OnRtcSubsystemFailed.Broadcast("Failed to load mediasoupclient Device");
-			}
-		}
 
 		videocore::ensureDeviceLoaded(
 			[this](mediasoupclient::Device& d)
 		{
+			USIOJsonObject* uobj = USIOJsonObject::ConstructJsonObject(this);
+			uobj->DecodeJson(FString(videocore::getDevice().GetRtpCapabilities().dump().c_str()));
+			RtpCapabilities = uobj;
+
 			setupConsumerTransport(d);
 			setupProducerTransport(d);
+
+			OnRtcSubsystemInitialized.Broadcast(uobj);
 		},
 			[this](string reason)
 		{
-			this->lastError = FString(reason.c_str());
+			this->lastError = "Failed to load mediasoupclient Device: " + FString(reason.c_str());
 			OnRtcSubsystemFailed.Broadcast(reason.c_str());
 		});
 	});
