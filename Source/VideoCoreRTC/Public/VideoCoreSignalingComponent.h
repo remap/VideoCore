@@ -32,7 +32,7 @@ DECLARE_DYNAMIC_DELEGATE_OneParam(FVideoCoreMediaServerOnClientRoster, const TAr
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewClient, FString, FString);
 DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcInternalClientLeft, FString);
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FVideoCoreRtcInternalNewProducer, FString, FString, FString);
+DECLARE_MULTICAST_DELEGATE_FourParams(FVideoCoreRtcInternalNewProducer, FString, FString, FString, FString);
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverTransportReady, FString, FString);
 

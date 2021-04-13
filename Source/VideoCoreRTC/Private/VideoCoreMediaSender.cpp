@@ -47,16 +47,16 @@ bool UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingCompon
 	return false;
 }
 
-bool UVideoCoreMediaSender::Produce(FString trackId, EMediaTrackKind trackKind)
+bool UVideoCoreMediaSender::Produce(FString contentHint, EMediaTrackKind trackKind)
 {
-	string tId = trackId.IsEmpty() ? videocore::generateUUID() : TCHAR_TO_ANSI(*trackId);
+	setStreamHint(contentHint, trackKind);
 
 	if (stream_)
-		return startStream(tId, trackKind);
+		return startStream(videocore::generateUUID(), trackKind, TCHAR_TO_ANSI(*contentHint));
 	else
 	{
-		onMediaStreamReady_.AddLambda([this, tId, trackKind]() {
-			this->startStream(tId, trackKind);
+		onMediaStreamReady_.AddLambda([this, contentHint, trackKind]() {
+			this->startStream(videocore::generateUUID(), trackKind, TCHAR_TO_ANSI(*contentHint));
 		});
 	}
 
@@ -94,7 +94,7 @@ void UVideoCoreMediaSender::setupRenderThreadCallback()
 	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaSender::tryCopyRenderTarget);
 }
 
-bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKind)
+bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKind, string hint)
 {
 	switch (trackKind) {
 	case EMediaTrackKind::Audio:
@@ -115,7 +115,7 @@ bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKin
 				createVideoSource();
 				setupRenderTarget(FrameSize, FrameRate);
 				createVideoTrack(trackId);
-				createProducer();
+				createProducer(hint);
 				return true;
 			}
 			else
@@ -281,7 +281,7 @@ void UVideoCoreMediaSender::createVideoSource()
 	UE_LOG(LogTemp, Log, TEXT("Set up video source"));
 }
 
-void UVideoCoreMediaSender::createProducer()
+void UVideoCoreMediaSender::createProducer(string hint)
 {
 	if (vcComponent_)
 	{
@@ -307,7 +307,7 @@ void UVideoCoreMediaSender::createProducer()
 		}
 
 		vcComponent_->invokeOnTransportProduce(videoTrack_->id(), 
-			[this](mediasoupclient::SendTransport* t, const std::string& kind,
+			[this, hint](mediasoupclient::SendTransport* t, const std::string& kind,
 			nlohmann::json rtpParameters, const nlohmann::json& appData)
 		{
 			std::shared_ptr<std::promise<string>> promise = std::make_shared<std::promise<string>>();
@@ -318,6 +318,10 @@ void UVideoCoreMediaSender::createProducer()
 				{ "kind", kind },
 				{ "rtpParameters", rtpParameters }
 			};
+
+			if (!hint.empty())
+				params["streamHint"] = hint;
+
 			vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("produce"), fromJsonObject(params),
 				[this, promise](auto response) 
 			{
@@ -399,8 +403,25 @@ void UVideoCoreMediaSender::checkAutoProduce()
 		UE_LOG(LogTemp, Log, TEXT("Auto-produce is ON: setup streams"));
 
 		// TODO: introduce stream hints (ids) as properties and use them here
-		if (videoTrackState_ < EMediaTrackState::Initializing) Produce(FString(), EMediaTrackKind::Video);
-		if (audioTrackState_ < EMediaTrackState::Initializing) Produce(FString(), EMediaTrackKind::Audio);
+		if (videoTrackState_ < EMediaTrackState::Initializing) Produce(VideoStreamHint, EMediaTrackKind::Video);
+		if (audioTrackState_ < EMediaTrackState::Initializing) Produce(AudioStreamHint, EMediaTrackKind::Audio);
+	}
+}
+
+void UVideoCoreMediaSender::setStreamHint(FString hint, EMediaTrackKind trackKind)
+{
+	switch (trackKind)
+	{
+	case EMediaTrackKind::Audio:
+		AudioStreamHint = hint;
+		break;
+	case EMediaTrackKind::Video:
+		VideoStreamHint = hint;
+		break;
+	case EMediaTrackKind::Data:
+		break;
+	default:
+		break;
 	}
 }
 

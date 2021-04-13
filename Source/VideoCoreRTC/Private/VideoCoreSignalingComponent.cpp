@@ -208,12 +208,13 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 		FString clientId = m->GetStringField(TEXT("clientId"));
 		FString producerId = m->GetStringField(TEXT("producerId"));
 		FString kind = m->GetStringField(TEXT("kind"));
+		FString hint = m->GetStringField(TEXT("hint"));
 
 		getClientRecord(clientId).state = EClientState::Producing;
 		getClientRecord(clientId).nProducers += 1;
 
-		UE_LOG(LogTemp, Log, TEXT("client %s created new producer %s (%s)"), *clientId, *producerId, *kind);
-		onNewProducer_.Broadcast(clientId, producerId, kind);
+		UE_LOG(LogTemp, Log, TEXT("client %s created new producer %s (%s %s)"), *clientId, *producerId, *kind, *hint);
+		onNewProducer_.Broadcast(clientId, producerId, kind, hint);
 	});
 
 	sIOClientComponent_->OnNativeEvent(TEXT("admit"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {

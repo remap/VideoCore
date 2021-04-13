@@ -94,14 +94,14 @@ public: // UE
 	FString clientId;
 
 	UFUNCTION(BlueprintCallable)
-	void SetVideoStreamFilter(FString videoStreamId);
+	void SetVideoStreamFilter(FString videoStreamHint);
 
 	UFUNCTION(BlueprintCallable)
 	FString GetVideoProducerId() const;
 
 	// Allows to specify exact stream id to consume in case client produces multiple streams
 	UFUNCTION(BlueprintCallable)
-	void SetAudioStreamFilter(FString audioStreamId);
+	void SetAudioStreamFilter(FString audioStreamHint);
 
 	UFUNCTION(BlueprintCallable)
 	FString GetAudioProducerId() const;
@@ -134,10 +134,10 @@ private: // UE
 	EClientState remoteClientState_;
 
 	UPROPERTY()
-	FString videoStreamIdFilter_;
+	FString videoStreamHintFilter_;
 
 	UPROPERTY()
-	FString audioStreamIdFilter_;
+	FString audioStreamHintFilter_;
 
 private: // native
 
@@ -208,6 +208,6 @@ private: // native
 	void setState(EClientState state);
 	// returns true if this client and producer IDs correspond to the clientId_ and either
 	// of producer ID filters (videoStreamIdFilter_ or audioStramIdFilter_)
-	bool isTargetProducer(FString clientId, FString producerId, FString kind);
+	bool isTargetProducer(FString clientId, FString producerId, FString kind, FString hint);
 	bool canConsume(FString kind);
 };

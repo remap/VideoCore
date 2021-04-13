@@ -85,22 +85,23 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 		if (m->HasField(this->clientId))
 		{
 			bool consumeVideo = false, consumeAudio = false;
-			FString videoToFetch = videoStreamIdFilter_.IsEmpty() ? "" : videoStreamIdFilter_;
-			FString audioToFetch = audioStreamIdFilter_.IsEmpty() ? "" : audioStreamIdFilter_;
+			FString videoToFetch = videoStreamHintFilter_.IsEmpty() ? "" : videoStreamHintFilter_;
+			FString audioToFetch = audioStreamHintFilter_.IsEmpty() ? "" : audioStreamHintFilter_;
 
 			for (auto d : m->GetArrayField(this->clientId))
 			{
 				auto obj = d->AsObject();
 				auto sId = obj->GetStringField("id");
+				auto hint = obj->GetStringField("hint");
 
 				if (obj->GetStringField("kind").Equals("video") && !consumeVideo &&
-					(videoToFetch.IsEmpty() || videoToFetch.Equals(sId)))
+					(videoToFetch.IsEmpty() || videoToFetch.Equals(hint)))
 				{
 					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*sId));
 					consumeVideo = true;
 				}
 				if (obj->GetStringField("kind").Equals("audio") && !consumeAudio &&
-					(audioToFetch.IsEmpty() || audioToFetch.Equals(sId)))
+					(audioToFetch.IsEmpty() || audioToFetch.Equals(hint)))
 				{
 					consume(vcComponent_->getRecvTransport(), TCHAR_TO_ANSI(*sId));
 					consumeAudio = true;
@@ -229,14 +230,14 @@ FString UVideoCoreMediaReceiver::GetAudioProducerId() const
 	return audioProducerId;
 }
 
-void UVideoCoreMediaReceiver::SetVideoStreamFilter(FString videoStreamId)
+void UVideoCoreMediaReceiver::SetVideoStreamFilter(FString videoStreamHint)
 {
-	videoStreamIdFilter_ = videoStreamId;
+	videoStreamHintFilter_ = videoStreamHint;
 }
 
-void UVideoCoreMediaReceiver::SetAudioStreamFilter(FString audioStreamId)
+void UVideoCoreMediaReceiver::SetAudioStreamFilter(FString audioStreamHint)
 {
-	audioStreamIdFilter_ = audioStreamId;
+	audioStreamHintFilter_ = audioStreamHint;
 }
 
 void UVideoCoreMediaReceiver::BeginDestroy()
@@ -281,9 +282,9 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 	callbackHandles_.Add(hndl);
 
 	hndl =
-	vcComponent_->onNewProducer_.AddLambda([&](FString clientId, FString producerId, FString kind) 
+	vcComponent_->onNewProducer_.AddLambda([&](FString clientId, FString producerId, FString kind, FString hint) 
 	{
-		if (this->AutoConsume && isTargetProducer(clientId, producerId, kind))
+		if (this->AutoConsume && isTargetProducer(clientId, producerId, kind, hint))
 		{ // our client, started producing media
 			UE_LOG(LogTemp, Log, TEXT("new producer %s %s"), *clientId, *producerId);
 			setState(EClientState::Producing);
@@ -765,16 +766,16 @@ UVideoCoreMediaReceiver::setState(EClientState state)
 }
 
 bool
-UVideoCoreMediaReceiver::isTargetProducer(FString clientId, FString producerId, FString kind)
+UVideoCoreMediaReceiver::isTargetProducer(FString clientId, FString producerId, FString kind, FString hint)
 {
 	// check if filters enabled
-	if (kind.Equals("video") && !videoStreamIdFilter_.IsEmpty())
+	if (kind.Equals("video") && !videoStreamHintFilter_.IsEmpty())
 	{
-		return clientId.Equals(this->clientId) && producerId.Equals(videoStreamIdFilter_);
+		return clientId.Equals(this->clientId) && hint.Equals(videoStreamHintFilter_);
 	}
-	else if (kind.Equals("audio") && !audioStreamIdFilter_.IsEmpty())
+	else if (kind.Equals("audio") && !audioStreamHintFilter_.IsEmpty())
 	{
-		return clientId.Equals(this->clientId) && producerId.Equals(audioStreamIdFilter_);
+		return clientId.Equals(this->clientId) && hint.Equals(audioStreamHintFilter_);
 	}
 	else
 	{

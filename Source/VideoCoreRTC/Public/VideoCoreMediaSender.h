@@ -80,6 +80,12 @@ public: // UE
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly, Category = "Broadcast Settings", META = (DisplayName = "Stream Bitrates (bps)", AllowPrivateAccess = true))
 	TArray<int> Bitrates;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	FString VideoStreamHint;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	FString AudioStreamHint;
+
 public: // native
 
 protected: // UE
@@ -106,7 +112,7 @@ private: // native
 	void OnTransportClose(mediasoupclient::Producer*) override;
 	
 	void setupRenderThreadCallback();
-	bool startStream(std::string id, EMediaTrackKind trackKind);
+	bool startStream(std::string id, EMediaTrackKind trackKind, std::string hint = "");
 	void stopStream(EMediaTrackKind trackKind, std::string reason);
 	void shutdown();
 	void checkAutoProduce();
@@ -116,7 +122,8 @@ private: // native
 	void createVideoTrack(std::string trackId);
 	void createAudioTrack(std::string trackId);
 	void createVideoSource();
-	void createProducer();
+	void createProducer(std::string hint = "");
+	void setStreamHint(FString hint, EMediaTrackKind trackKind);
 
 	// tries to copy render target into copiedTexture_ variable
 	// called on render thread every frame 
