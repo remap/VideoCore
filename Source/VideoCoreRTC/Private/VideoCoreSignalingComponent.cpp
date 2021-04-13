@@ -8,6 +8,8 @@
 #include "VideoCoreSignalingComponent.h"
 #include "CULambdaRunnable.h"
 #include "native/video-core-rtc.hpp"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/EngineVersion.h"
 
 using namespace std;
 using namespace videocore;
@@ -102,13 +104,21 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 		});
 #endif
 
-		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);;
+		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);
 		if (!clientName.IsEmpty())
 			query->SetStringField(TEXT("name"), clientName);
 		if (!clientId.IsEmpty())
 			query->SetStringField(TEXT("id"), clientId);
 
-		sIOClientComponent_->Connect(url, path, query);
+		USIOJsonObject* headers = USIOJsonObject::ConstructJsonObject(this);
+		headers->SetStringField(TEXT("client-type"), TEXT("game-engine"));
+		headers->SetStringField(TEXT("platform-name"), *UGameplayStatics::GetPlatformName());
+		// TODO: how to get OS version ?
+		headers->SetStringField(TEXT("platform-version"), TEXT("n/a"));
+		headers->SetStringField(TEXT("engine-name"), TEXT("UnrealEngine"));
+		headers->SetStringField(TEXT("engine-version"), *FEngineVersion::Current().ToString());
+
+		sIOClientComponent_->Connect(url, path, query, headers);
 		state = ESignalingClientState::Connecting;
 		
 		this->url = url;
