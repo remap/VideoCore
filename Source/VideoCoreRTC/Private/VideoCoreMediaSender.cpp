@@ -66,6 +66,28 @@ bool UVideoCoreMediaSender::Produce(FString contentHint, EMediaTrackKind trackKi
 
 void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 {
+	// notify server we're closing
+	string producerId = "";
+	switch (trackKind)
+	{
+	case EMediaTrackKind::Audio:
+		if (audioProducer_)
+			producerId = audioProducer_->GetId();
+		break;
+	case EMediaTrackKind::Video:
+		if (videoProducer_)
+			producerId = videoProducer_->GetId();
+		break;
+	case EMediaTrackKind::Data:
+		break;
+	default:
+		break;
+	}
+
+	if (!producerId.empty())
+		vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
+			videocore::fromJsonObject({ { "id", producerId } }));
+
 	stopStream(trackKind, "user initiated");
 }
 
@@ -173,11 +195,6 @@ void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
 
 			if (videoProducer_)
 			{
-				// notify server if we still can
-				if (reason != "shutdown")
-					vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
-						videocore::fromJsonObject({ { "id", videoProducer_->GetId() } }));
-
 				videoProducer_->Close();
 				delete videoProducer_;
 				videoProducer_ = nullptr;
