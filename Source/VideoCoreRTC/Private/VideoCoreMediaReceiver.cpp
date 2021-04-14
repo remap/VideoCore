@@ -20,10 +20,6 @@
 #include <TextureResource.h>
 #include <Misc/Guid.h>
 
-// TODO: make it configurable from the editor
-static int kTextureWidth = 1920; 
-static int kTextureHeight = 1080;
-
 using namespace std;
 using namespace videocore;
 
@@ -40,7 +36,7 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, videoConsumer_(nullptr)
 	, audioBuffer_(make_shared<videocore::AudioBuffer>(256, 2048))
 {
-	initTexture(kTextureWidth, kTextureHeight);
+	initTexture(kDefaultTextureWidth, kDefaultTextureHeight);
 }
 
 UVideoCoreMediaReceiver::~UVideoCoreMediaReceiver()

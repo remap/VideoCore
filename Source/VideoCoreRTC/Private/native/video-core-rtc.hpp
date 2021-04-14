@@ -16,6 +16,9 @@
 
 namespace videocore 
 {
+	extern int kDefaultTextureWidth;
+	extern int kDefaultTextureHeight;
+
 	void initialize();
 
 	nlohmann::json fromFString(FString jsonString);

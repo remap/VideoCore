@@ -86,6 +86,10 @@ public: // UE
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	FString AudioStreamHint;
 
+	// ready to be sent out texture
+	UPROPERTY(BlueprintReadOnly)
+	UTexture2D* BackbufferTexture;
+
 public: // native
 
 protected: // UE
@@ -117,6 +121,8 @@ private: // native
 	void shutdown();
 	void checkAutoProduce();
 
+	// TODO: check this is working properly in widgets
+	void setupBackBufferTexture();
 	void setupRenderTarget(FIntPoint InFrameSize, FFrameRate InFrameRate);
 	void createStream();
 	void createVideoTrack(std::string trackId);

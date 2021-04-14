@@ -32,6 +32,7 @@ bool UVideoCoreMediaSender::Init(UVideoCoreSignalingComponent* vcSiganlingCompon
 
 	if (vcComponent_)
 	{
+		setupBackBufferTexture();
 		setupRenderThreadCallback();
 		vcComponent_->invokeWhenSendTransportReady([this](const mediasoupclient::SendTransport*) {
 			createStream();
@@ -172,6 +173,11 @@ void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
 
 			if (videoProducer_)
 			{
+				// TODO: tell server we're closing here 
+				USIOJsonObject* obj = USIOJsonObject::ConstructJsonObject(this);
+				obj->SetStringField(TEXT("id"), FString(videoProducer_->GetId().c_str()));
+				vcComponent_->getSocketIOClientComponent()->Emit(TEXT("closeProducer"), USIOJsonValue::ConstructJsonValueObject(obj, this));
+
 				videoProducer_->Close();
 				delete videoProducer_;
 				videoProducer_ = nullptr;
@@ -187,6 +193,13 @@ void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
 			break;
 		}
 	}
+}
+
+void UVideoCoreMediaSender::setupBackBufferTexture()
+{
+	BackbufferTexture = UTexture2D::CreateTransient(videocore::kDefaultTextureWidth, videocore::kDefaultTextureHeight);
+	BackbufferTexture->UpdateResource();
+	BackbufferTexture->RefreshSamplerStates();
 }
 
 void UVideoCoreMediaSender::setupRenderTarget(FIntPoint InFrameSize, FFrameRate InFrameRate)
@@ -214,6 +227,26 @@ void UVideoCoreMediaSender::setupRenderTarget(FIntPoint InFrameSize, FFrameRate 
 		TexCreate_CPUReadback,
 		CreateInfo
 	);
+
+	{ // update resource for BackBuffer Texture2D
+		if (FTextureResource* TextureResource = BackbufferTexture->Resource)
+		{
+			TextureResource->TextureRHI = (FTextureRHIRef&)backBufferTexture_;
+
+			if (IsInRenderingThread())
+			{
+				RHIUpdateTextureReference(BackbufferTexture->TextureReference.TextureReferenceRHI, backBufferTexture_);
+			}
+			else
+			{
+				ENQUEUE_RENDER_COMMAND(FVCVideoTexture2DUpdateTextureReference)(
+					[this](FRHICommandListImmediate& RHICmdList) {
+					RHIUpdateTextureReference(BackbufferTexture->TextureReference.TextureReferenceRHI, backBufferTexture_);
+				});
+				FlushRenderingCommands();
+			}
+		}
+	}
 
 	// Create the RenderTarget descriptor
 	renderTargetDesc_ = FPooledRenderTargetDesc::Create2DDesc(

@@ -34,6 +34,9 @@ static FVideoCoreRtcOnDeviceLoadFailed OnDeviceLoadFailed;
 static FCriticalSection deviceSync;
 static mediasoupclient::Device device;
 
+int videocore::kDefaultTextureWidth = 1920;
+int videocore::kDefaultTextureHeight = 1080;
+
 void createWebRtcFactory(bool);
 
 using namespace videocore;
