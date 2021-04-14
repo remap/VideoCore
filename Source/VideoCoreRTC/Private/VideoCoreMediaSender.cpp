@@ -173,10 +173,10 @@ void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
 
 			if (videoProducer_)
 			{
-				// TODO: tell server we're closing here 
-				USIOJsonObject* obj = USIOJsonObject::ConstructJsonObject(this);
-				obj->SetStringField(TEXT("id"), FString(videoProducer_->GetId().c_str()));
-				vcComponent_->getSocketIOClientComponent()->Emit(TEXT("closeProducer"), USIOJsonValue::ConstructJsonValueObject(obj, this));
+				// notify server if we still can
+				if (reason != "shutdown")
+					vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
+						videocore::fromJsonObject({ { "id", videoProducer_->GetId() } }));
 
 				videoProducer_->Close();
 				delete videoProducer_;
