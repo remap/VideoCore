@@ -91,6 +91,24 @@ void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 	stopStream(trackKind, "user initiated");
 }
 
+bool UVideoCoreMediaSender::hasTrackOfType(EMediaTrackKind Kind) const
+{
+	if (stream_.get())
+		return Kind == EMediaTrackKind::Video ? stream_->GetVideoTracks().size() : stream_->GetAudioTracks().size();
+
+	return false;
+}
+
+EMediaTrackState UVideoCoreMediaSender::getTrackState(EMediaTrackKind Kind) const
+{
+	if (hasTrackOfType(Kind))
+	{
+		return (Kind == EMediaTrackKind::Video ? videoTrackState_ : audioTrackState_);
+	}
+
+	return EMediaTrackState::Unknown;
+}
+
 void UVideoCoreMediaSender::BeginDestroy()
 {
 	shutdown();
@@ -258,6 +276,8 @@ void UVideoCoreMediaSender::setupRenderTarget(FIntPoint InFrameSize, FFrameRate 
 			{
 				ENQUEUE_RENDER_COMMAND(FVCVideoTexture2DUpdateTextureReference)(
 					[this](FRHICommandListImmediate& RHICmdList) {
+					BackbufferTexture->Resource->ReleaseRHI();
+					BackbufferTexture->Resource->TextureRHI = (FTextureRHIRef&)backBufferTexture_;
 					RHIUpdateTextureReference(BackbufferTexture->TextureReference.TextureReferenceRHI, backBufferTexture_);
 				});
 				FlushRenderingCommands();

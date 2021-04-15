@@ -675,11 +675,10 @@ UVideoCoreMediaReceiver::initTexture(int width, int height)
 				EPixelFormat::PF_B8G8R8A8, 1, 1,
 				TexCreate_Dynamic | TexCreate_SRGB, CreateInfo);
 
-			TextureResource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
-
 			ENQUEUE_RENDER_COMMAND(FVCVideoTexture2DUpdateTextureReference)(
 				[this, RenderableTexture](FRHICommandListImmediate& RHICmdList) {
-
+				videoTexture_->Resource->ReleaseRHI();
+				videoTexture_->Resource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
 				RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, RenderableTexture);
 			});
 

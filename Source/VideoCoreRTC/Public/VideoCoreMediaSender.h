@@ -52,6 +52,12 @@ public: // UE
 	UFUNCTION(BlueprintCallable)
 	void Stop(EMediaTrackKind trackKind);
 
+	UFUNCTION(BlueprintCallable)
+	bool hasTrackOfType(EMediaTrackKind Kind) const;
+
+	UFUNCTION(BlueprintCallable)
+	EMediaTrackState getTrackState(EMediaTrackKind Kind) const;
+
 	UPROPERTY(BlueprintAssignable)
 	FVideoCorMediaSenderStartProducing OnStartProducing;
 
