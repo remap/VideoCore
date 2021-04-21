@@ -56,6 +56,9 @@ public:
 	void connect(FString url, FString path = TEXT("server"));
 
 	UFUNCTION(BlueprintCallable)
+	void disconnect();
+
+	UFUNCTION(BlueprintCallable)
 	TArray<FVideoCoreMediaServerClientInfo> getClientRoster() const;
 
 	UFUNCTION(BlueprintCallable)

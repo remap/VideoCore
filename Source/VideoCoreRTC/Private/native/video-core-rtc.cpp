@@ -18,14 +18,15 @@
 
 // change this to true to use WebrRTC's default audio device module
 static bool useDefaultAudioDeviceModule = true; 
-static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
 
 /* MediaStreamTrack holds reference to the threads of the PeerConnectionFactory.
  * Use plain pointers in order to avoid threads being destructed before tracks.
  */
-static rtc::Thread* networkThread;
-static rtc::Thread* signalingThread;
-static rtc::Thread* workerThread;
+static std::unique_ptr<rtc::Thread> networkThread;
+static std::unique_ptr<rtc::Thread> signalingThread;
+static std::unique_ptr<rtc::Thread> workerThread;
+
+static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
 
 DECLARE_MULTICAST_DELEGATE(FVideoCoreRtcOnDeviceLoaded);
 DECLARE_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcOnDeviceLoadFailed, FString);
@@ -146,9 +147,9 @@ std::string videocore::generateUUID()
 // ****
 void createWebRtcFactory(bool useDefaultAdm)
 {
-	networkThread = rtc::Thread::Create().release();
-	signalingThread = rtc::Thread::Create().release();
-	workerThread = rtc::Thread::Create().release();
+	networkThread = rtc::Thread::Create(); // .release();
+	signalingThread = rtc::Thread::Create(); //  .release();
+	workerThread = rtc::Thread::Create(); // .release();
 
 	networkThread->SetName("network_thread", nullptr);
 	signalingThread->SetName("signaling_thread", nullptr);
@@ -169,9 +170,9 @@ void createWebRtcFactory(bool useDefaultAdm)
 	}
 
 	factory = webrtc::CreatePeerConnectionFactory(
-		networkThread,
-		workerThread,
-		signalingThread,
+		networkThread.get(),
+		workerThread.get(),
+		signalingThread.get(),
 		adm, // nullptr -- default ADM
 		webrtc::CreateBuiltinAudioEncoderFactory(),
 		webrtc::CreateBuiltinAudioDecoderFactory(),

@@ -92,7 +92,8 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 		UE_LOG(LogTemp, Log, TEXT("Connecting %s (%s)..."), *url, *path);
 
 		clientRoster.Empty();
-		sIOClientComponent_->Disconnect();
+		if (sIOClientComponent_->bIsConnected)
+			sIOClientComponent_->SyncDisconnect();
 		sIOClientComponent_->SetupCallbacks();
 
 #if !UE_EDITOR
@@ -123,6 +124,17 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 		
 		this->url = url;
 		this->serverPath = path;
+	}
+}
+
+void UVideoCoreSignalingComponent::disconnect()
+{
+	if (sIOClientComponent_)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Disconnecting %s (%s)..."), *url, *serverPath);
+
+		clientRoster.Empty();
+		sIOClientComponent_->SyncDisconnect();
 	}
 }
 
@@ -376,8 +388,8 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 			if (is_same<T, mediasoupclient::RecvTransport>::value)
 				recvTransportConnectCb_.clear();
 			// TODO: fix crash below
-			if (is_same<T, mediasoupclient::SendTransport>::value)
-				transportProduceCb_.clear();
+			/*if (is_same<T, mediasoupclient::SendTransport>::value)
+				transportProduceCb_.clear();*/
 		});
 
 		// nullify pointer now
@@ -492,10 +504,10 @@ void UVideoCoreSignalingComponent::onConnectedToServer(FString SessionId, bool b
 void UVideoCoreSignalingComponent::onDisconnected(TEnumAsByte<ESIOConnectionCloseReason> Reason)
 {
 	UE_LOG(LogTemp, Warning, TEXT("VideoCore mediaserver disconnected. Reason: %s"),
-		(Reason == CLOSE_REASON_NORMAL ? "NORMAL" : "DROP"));
+		(Reason == CLOSE_REASON_NORMAL ? ANSI_TO_TCHAR("NORMAL") : ANSI_TO_TCHAR("DROP")));
 
-	cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
-	cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+	clientRoster.Empty();
+	shutdown();
 
 	state = ESignalingClientState::NotConnected;
 	OnRtcSiganlingDisconnected.Broadcast((Reason == CLOSE_REASON_NORMAL ? "NORMAL" : "DROP"));
