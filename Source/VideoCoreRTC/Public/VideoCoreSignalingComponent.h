@@ -28,6 +28,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcSubsystemFailedToInit, 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcNewClient, FString, ClientName, FString, ClientId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcClientLeft, FString, ClientId);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcAppBroadcast, FString, ClientId, USIOJsonObject*, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcAppUnicast, FString, ClientId, USIOJsonObject*, Message);
+
 DECLARE_DYNAMIC_DELEGATE_OneParam(FVideoCoreMediaServerOnClientRoster, const TArray<FVideoCoreMediaServerClientInfo>&, roster);
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcInternalNewClient, FString, FString);
@@ -86,6 +89,12 @@ public:
 
 	UPROPERTY(BlueprintAssignable)
 	FVideoCoreRtcClientLeft OnClientLeft;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreRtcAppBroadcast OnAppBroadcastMessage;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreRtcAppUnicast OnAppUnicastMessage;
 
 	// Properties
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly)

@@ -252,6 +252,26 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 			OnRtcSignalingFailure.Broadcast("Unknown");
 
 	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("appBroadcast"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
+		auto m = response->AsObject();
+
+		FString from = m->GetStringField(TEXT("from"));
+		USIOJsonObject* msg = USIOJsonObject::ConstructJsonObject(this);
+		msg->SetRootObject(m->GetObjectField(TEXT("msg")));
+
+		OnAppBroadcastMessage.Broadcast(from, msg);
+	});
+
+	sIOClientComponent_->OnNativeEvent(TEXT("appUnicast"), [&](const FString&, const TSharedPtr<FJsonValue>& response) {
+		auto m = response->AsObject();
+
+		FString from = m->GetStringField(TEXT("from"));
+		USIOJsonObject* msg = USIOJsonObject::ConstructJsonObject(this);
+		msg->SetRootObject(m->GetObjectField(TEXT("msg")));
+
+		OnAppUnicastMessage.Broadcast(from, msg);
+	});
 }
 
 void UVideoCoreSignalingComponent::initRtcSubsystem()
