@@ -194,7 +194,8 @@ private: // native
 	size_t samplesReceived_; // TODO: multi-thread read access -- make atomic?
 
 	// helper calls
-	void initTexture(int w, int h);
+	void createTexture(int w, int h);
+	void resizeTexture(int w, int h);
 	void initFrameBuffer(int w, int h);
 	void captureVideoFrame();
 
@@ -210,4 +211,5 @@ private: // native
 	// of producer ID filters (videoStreamIdFilter_ or audioStramIdFilter_)
 	bool isTargetProducer(FString clientId, FString producerId, FString kind, FString hint);
 	bool canConsume(FString kind);
+	FString getTextureDebugName() const;
 };

@@ -36,7 +36,7 @@ UVideoCoreMediaReceiver::UVideoCoreMediaReceiver(const FObjectInitializer& Objec
 	, videoConsumer_(nullptr)
 	, audioBuffer_(make_shared<videocore::AudioBuffer>(256, 2048))
 {
-	initTexture(kDefaultTextureWidth, kDefaultTextureHeight);
+	createTexture(kDefaultTextureWidth, kDefaultTextureHeight);
 }
 
 UVideoCoreMediaReceiver::~UVideoCoreMediaReceiver()
@@ -117,8 +117,7 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 
 void UVideoCoreMediaReceiver::Stop()
 {
-	stopStreaming("video");
-	stopStreaming("audio");
+	shutdown();
 }
 
 bool UVideoCoreMediaReceiver::hasTrackOfType(EMediaTrackKind Kind) const
@@ -328,9 +327,9 @@ UVideoCoreMediaReceiver::consume(mediasoupclient::RecvTransport* t, const string
 				ANSI_TO_TCHAR(producerId.c_str()));
 			
 			// special handling for cases when transport hasn't connected yet
-			vcComponent_->invokeOnRecvTransportConnect([this, kind]() {
+			/*vcComponent_->invokeOnRecvTransportConnect([this, kind]() {
 				resumeTrack(kind == "video" ? videoConsumer_ : audioConsumer_);
-			});
+			});*/
 
 			consumer = vcComponent_->getRecvTransport()->Consume(this,
 				producerId,
@@ -476,6 +475,8 @@ UVideoCoreMediaReceiver::stopStreaming(const string& kind, const string& reason)
 void
 UVideoCoreMediaReceiver::shutdown()
 {
+	FCoreDelegates::OnEndFrameRT.RemoveAll(this);
+
 	stopStreaming("audio", "shutdown");
 	stopStreaming("video", "shutdown");
 
@@ -617,20 +618,15 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 		{
 			assert(frameWidth_ > 0); assert(frameHeight_ > 0);
 
-			//textureInitActive_ = true;
-			FCULambdaRunnable::RunShortLambdaOnGameThread([this]() {
-				FScopeLock TextureLock(&videoTextureSync_);
+			UE_LOG(LogTemp, Log, TEXT("texture mismatch. need %dx%d current %dx%d -- %s"),
+				frameWidth_, frameHeight_,
+				IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().X : 0,
+				IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().Y : 0,
+				videoConsumer_ ? ANSI_TO_TCHAR(videoConsumer_->GetId().c_str()) : ANSI_TO_TCHAR("n/a"));
 
-				UE_LOG(LogTemp, Log, TEXT("texture mismatch. need %dx%d current %dx%d"),
-					frameWidth_, frameHeight_,
-					IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().X : 0,
-					IsValid(videoTexture_) ? videoTexture_->Resource->TextureRHI->GetSizeXYZ().Y : 0);
-
-				initTexture(frameWidth_, frameHeight_);
-				//textureInitActive_ = false;
-			});
+			resizeTexture(frameWidth_, frameHeight_);
 		}
-		else
+		//else
 		{
 			FScopeLock RenderLock(&frameBufferSync_);
 
@@ -650,42 +646,33 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 	}
 }
 
+// game thread call
 void
-UVideoCoreMediaReceiver::initTexture(int width, int height)
+UVideoCoreMediaReceiver::createTexture(int width, int height)
 {
-	if (!videoTexture_)
-	{
-		videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8);
-		videoTexture_->UpdateResource();
-		videoTexture_->RefreshSamplerStates();
-	}
-	else if (videoTexture_->GetSizeX() != width || videoTexture_->GetSizeY() != height)
-	{
-		//videoTexture_->ReleaseResource();
-
-		if (FTextureResource* TextureResource = videoTexture_->Resource)// new FTextureResource())
-		{
-			//videoTexture_->Resource = TextureResource;
-
-			// Set the default video texture to reference nothing
-			TRefCountPtr<FRHITexture2D> RenderableTexture;
-			FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(FLinearColor::Black) };
-
-			RenderableTexture = RHICreateTexture2D(width, height,
-				EPixelFormat::PF_B8G8R8A8, 1, 1,
-				TexCreate_Dynamic | TexCreate_SRGB, CreateInfo);
-
-			ENQUEUE_RENDER_COMMAND(FVCVideoTexture2DUpdateTextureReference)(
-				[this, RenderableTexture](FRHICommandListImmediate& RHICmdList) {
-				videoTexture_->Resource->ReleaseRHI();
-				videoTexture_->Resource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
-				RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, RenderableTexture);
-			});
-
-			FlushRenderingCommands();
-		}
-	}
+	videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8, FName(*getTextureDebugName()));
+	videoTexture_->UpdateResource();
+	videoTexture_->RefreshSamplerStates();
 }
+
+// render thread call
+void
+UVideoCoreMediaReceiver::resizeTexture(int width, int height)
+{
+	TRefCountPtr<FRHITexture2D> RenderableTexture;
+	FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(FLinearColor::Black) };
+
+	RenderableTexture = RHICreateTexture2D(width, height,
+		EPixelFormat::PF_B8G8R8A8, 1, 1,
+		TexCreate_Dynamic | TexCreate_SRGB, CreateInfo);
+	RenderableTexture->SetName(FName(*getTextureDebugName()));
+
+	videoTexture_->Resource->ReleaseRHI();
+	videoTexture_->Resource->TextureRHI = (FTextureRHIRef&)RenderableTexture;
+	RHIUpdateTextureReference(videoTexture_->TextureReference.TextureReferenceRHI, RenderableTexture);
+	videoTexture_->RefreshSamplerStates();
+}
+
 
 void
 UVideoCoreMediaReceiver::initFrameBuffer(int width, int height)
@@ -784,4 +771,13 @@ bool
 UVideoCoreMediaReceiver::canConsume(FString kind)
 {
 	return !audioConsumer_ && kind.Equals("audio") || !videoConsumer_ && kind.Equals("video");
+}
+
+FString
+UVideoCoreMediaReceiver::getTextureDebugName() const
+{
+	if (videoConsumer_)
+		return FString("MediaReceiverVideoTexture:") + FString(videoConsumer_->GetId().c_str());
+	
+	return FString("MediaReceiverVideoTexture");
 }
