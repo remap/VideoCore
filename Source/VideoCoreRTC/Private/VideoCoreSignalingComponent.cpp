@@ -10,6 +10,7 @@
 #include "native/video-core-rtc.hpp"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/EngineVersion.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 
 using namespace std;
 using namespace videocore;
@@ -107,9 +108,10 @@ void UVideoCoreSignalingComponent::connect(FString url, FString path)
 
 		USIOJsonObject* query = USIOJsonObject::ConstructJsonObject(this);
 		if (!clientName.IsEmpty())
-			query->SetStringField(TEXT("name"), clientName);
+			query->SetStringField(TEXT("name"), FGenericPlatformHttp::UrlEncode(clientName));
+		
 		if (!clientId.IsEmpty())
-			query->SetStringField(TEXT("id"), clientId);
+			query->SetStringField(TEXT("id"), FGenericPlatformHttp::UrlEncode(clientId));
 
 		USIOJsonObject* headers = USIOJsonObject::ConstructJsonObject(this);
 		headers->SetStringField(TEXT("client-type"), TEXT("game-engine"));

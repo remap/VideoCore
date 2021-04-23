@@ -57,7 +57,8 @@ public class VideoCoreRTC : ModuleRules
                 "SocketIOClient",
                 "SocketIOLib",
                 "Json",
-                "SIOJson"
+                "SIOJson",
+                "HTTP"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);
