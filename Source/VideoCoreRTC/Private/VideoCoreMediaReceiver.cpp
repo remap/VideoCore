@@ -650,7 +650,7 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 void
 UVideoCoreMediaReceiver::createTexture(int width, int height)
 {
-	videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8, FName(*getTextureDebugName()));
+	videoTexture_ = UTexture2D::CreateTransient(width, height, EPixelFormat::PF_B8G8R8A8);
 	videoTexture_->UpdateResource();
 	videoTexture_->RefreshSamplerStates();
 }
