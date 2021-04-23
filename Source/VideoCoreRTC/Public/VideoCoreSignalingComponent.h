@@ -52,7 +52,7 @@ public:
 	// Sets default values for this component's properties
 	UVideoCoreSignalingComponent();
 
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable)
 	USocketIOClientComponent* getSocketIOClientComponent() const { return sIOClientComponent_; }
 
 	UFUNCTION(BlueprintCallable)
