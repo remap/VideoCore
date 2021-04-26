@@ -140,6 +140,21 @@ void UVideoCoreSignalingComponent::disconnect()
 	}
 }
 
+void UVideoCoreSignalingComponent::sendUnicastMessage(FString toClientId, USIOJsonObject* Message, FVideoCoreRtcAppUnicastCallback OnStatusCallback)
+{
+	auto obj = USIOJConvert::MakeJsonObject(); 
+	obj->SetStringField(TEXT("to"), toClientId);
+	obj->SetObjectField(TEXT("msg"), Message->GetRootObject());
+
+	sIOClientComponent_->EmitNative(TEXT("appUnicast"), obj,
+		[this, OnStatusCallback](auto response) {
+		auto m = response[0]->AsObject();
+		auto status = (m->HasField("error") ? m->GetStringField(TEXT("error")) : m->GetStringField(TEXT("status")));
+		
+		OnStatusCallback.ExecuteIfBound(status);
+	});
+}
+
 // Called every frame
 void UVideoCoreSignalingComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {

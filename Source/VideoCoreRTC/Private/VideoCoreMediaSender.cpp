@@ -442,9 +442,9 @@ void UVideoCoreMediaSender::createProducer(string hint)
 
 			FCULambdaRunnable::RunShortLambdaOnGameThread([this, reason]() {
 				if (videoTrackState_ == EMediaTrackState::Live)
-					OnStartProducing.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video);
+					OnStartProducing.Broadcast(videoProducer_->GetId().c_str(), EMediaTrackKind::Video);
 				else
-					OnProduceFailure.Broadcast(videoTrack_->id().c_str(), EMediaTrackKind::Video, reason.c_str());
+					OnProduceFailure.Broadcast("", EMediaTrackKind::Video, reason.c_str());
 			});
 		});	
 	}

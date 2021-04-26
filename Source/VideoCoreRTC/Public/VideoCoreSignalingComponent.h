@@ -30,6 +30,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreRtcClientLeft, FString, Cl
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcAppBroadcast, FString, ClientId, USIOJsonObject*, Message);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreRtcAppUnicast, FString, ClientId, USIOJsonObject*, Message);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FVideoCoreRtcAppUnicastCallback, FString, Status);
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FVideoCoreMediaServerOnClientRoster, const TArray<FVideoCoreMediaServerClientInfo>&, roster);
 
@@ -66,6 +67,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void fetchClientRoster(FVideoCoreMediaServerOnClientRoster onRoster);
+
+	UFUNCTION(BlueprintCallable)
+	void sendUnicastMessage(FString toClientId, USIOJsonObject* Message, FVideoCoreRtcAppUnicastCallback OnStatusCallback);
 
 public:
 	// Callbacks
