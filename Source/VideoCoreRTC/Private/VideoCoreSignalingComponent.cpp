@@ -74,10 +74,16 @@ void UVideoCoreSignalingComponent::fetchClientRoster(FVideoCoreMediaServerOnClie
 			auto m = v->AsObject();
 			int nProducers = (int)m->GetNumberField("nProducers");
 			int nConsumers = (int)m->GetNumberField("nConsumers");
+			
+			USIOJsonObject* appData = USIOJsonObject::ConstructJsonObject(this);
+			if (m->HasField(TEXT("appData")))
+				appData->SetRootObject(m->GetObjectField("appData"));
+
 			FVideoCoreMediaServerClientInfo cInfo(m->GetStringField("id"), 
 				m->GetStringField("name"),
 				(nProducers ? EClientState::Producing : EClientState::NotProducing),
 				nProducers, nConsumers);
+			cInfo.appData = appData;
 
 			this->clientRoster.Add(cInfo.clientId, cInfo);
 		}
