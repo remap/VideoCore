@@ -83,6 +83,7 @@ public:
 		, state(cState)
 		, nProducers(np)
 		, nConsumers(nc)
+		, appData(nullptr)
 	{}
 
 	UPROPERTY(BlueprintReadOnly)
@@ -99,6 +100,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 		int nConsumers;
+
+	UPROPERTY(BlueprintReadOnly)
+		USIOJsonObject* appData;
 };
 
 UCLASS(ClassGroup = (VideoCoreRTC), Blueprintable, meta = (BlueprintSpawnableComponent))
