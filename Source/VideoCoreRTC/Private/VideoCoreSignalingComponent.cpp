@@ -324,8 +324,6 @@ void UVideoCoreSignalingComponent::initRtcSubsystem()
 			setupConsumerTransport(d);
 			setupProducerTransport(d);
 			sendMyInfo();
-
-			OnRtcSubsystemInitialized.Broadcast(uobj);
 		},
 			[this](string reason)
 		{
@@ -372,7 +370,12 @@ void UVideoCoreSignalingComponent::setupConsumerTransport(mediasoupclient::Devic
 				consumerData["dtlsParameters"]);
 
 			if (recvTransport_)
+			{
 				onTransportReady_.Broadcast(FString(recvTransport_->GetId().c_str()), TEXT("recv"));
+			
+				if (sendTransport_) // check if other transport initialized and notify
+					OnRtcSubsystemInitialized.Broadcast(RtpCapabilities);
+			}
 		}
 	});
 }
@@ -408,8 +411,14 @@ void UVideoCoreSignalingComponent::setupProducerTransport(mediasoupclient::Devic
 				producerData["dtlsParameters"]);
 
 			if (sendTransport_)
+			{
 				onTransportReady_.Broadcast(FString(sendTransport_->GetId().c_str()), TEXT("send"));
+				
+				if (recvTransport_) // check if other transport initialized and notify
+					OnRtcSubsystemInitialized.Broadcast(RtpCapabilities);
+			}
 		}
+			
 	});
 }
 
