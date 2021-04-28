@@ -364,14 +364,16 @@ void UVideoCoreMediaSender::createProducer(string hint)
 			{
 				// TODO: expand for configurable FPS and other settings
 				webrtc::RtpEncodingParameters p;
-				p.max_bitrate_bps = bps;
+				//p.max_bitrate_bps = bps;
+				p.min_bitrate_bps = bps;
 				encodings.push_back(p);
 			}
 		}
 		else
 		{
 			webrtc::RtpEncodingParameters p;
-			p.max_bitrate_bps = 500000;
+			//p.max_bitrate_bps = 500000;
+			p.min_bitrate_bps = 500000;
 			encodings.push_back(p);
 			Bitrates.Add(p.max_bitrate_bps.value());
 		}
@@ -423,7 +425,12 @@ void UVideoCoreMediaSender::createProducer(string hint)
 			string reason = "";
 			try
 			{
-				this->videoProducer_ = vcComponent_->getSendTransport()->Produce(this, videoTrack_, &encodings, nullptr,
+				nlohmann::json codecOptions = { 
+					{ "videoGoogleStartBitrate", 100000 },
+					{ "videoGoogleMinBitrate", encodings[0].min_bitrate_bps.value() }
+				};
+
+				this->videoProducer_ = vcComponent_->getSendTransport()->Produce(this, videoTrack_, &encodings, &codecOptions,
 					{ { "trackId", videoTrack_->id() } });
 
 				videoTrackState_ = EMediaTrackState::Live;
