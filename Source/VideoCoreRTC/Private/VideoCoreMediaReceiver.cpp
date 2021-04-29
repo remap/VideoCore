@@ -482,7 +482,10 @@ UVideoCoreMediaReceiver::shutdown()
 
 	if (frameBgraBuffer_)
 	{
+		FScopeLock RenderLock(&frameBufferSync_);
+
 		free(frameBgraBuffer_);
+		frameBgraBuffer_ = nullptr;
 		bufferSize_ = 0;
 	}
 }
@@ -630,18 +633,21 @@ UVideoCoreMediaReceiver::captureVideoFrame()
 		{
 			FScopeLock RenderLock(&frameBufferSync_);
 
-			FUpdateTextureRegion2D region;
-			region.SrcX = 0;
-			region.SrcY = 0;
-			region.DestX = 0;
-			region.DestY = 0;
-			region.Width = frameWidth_;
-			region.Height = frameHeight_;
+			if (frameBgraBuffer_)
+			{
+				FUpdateTextureRegion2D region;
+				region.SrcX = 0;
+				region.SrcY = 0;
+				region.DestX = 0;
+				region.DestY = 0;
+				region.Width = frameWidth_;
+				region.Height = frameHeight_;
 
-			FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
-			RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, frameWidth_ * 4, frameBgraBuffer_);
+				FTexture2DResource* res = (FTexture2DResource*)videoTexture_->Resource;
+				RHIUpdateTexture2D(res->GetTexture2DRHI(), 0, region, frameWidth_ * 4, frameBgraBuffer_);
 
-			hasNewFrame_ = false;
+				hasNewFrame_ = false;
+			}
 		}
 	}
 }
