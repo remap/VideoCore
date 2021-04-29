@@ -161,6 +161,14 @@ void UVideoCoreSignalingComponent::sendUnicastMessage(FString toClientId, USIOJs
 	});
 }
 
+void UVideoCoreSignalingComponent::setAppData(USIOJsonObject* appData)
+{
+	USIOJsonObject* info = USIOJsonObject::ConstructJsonObject(this);
+	info->SetObjectField(TEXT("appData"), appData);
+
+	sIOClientComponent_->Emit(TEXT("setClientInfo"), USIOJsonValue::ConstructJsonValueObject(info, this));
+}
+
 // Called every frame
 void UVideoCoreSignalingComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {

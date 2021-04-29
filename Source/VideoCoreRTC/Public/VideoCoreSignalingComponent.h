@@ -71,6 +71,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void sendUnicastMessage(FString toClientId, USIOJsonObject* Message, FVideoCoreRtcAppUnicastCallback OnStatusCallback);
 
+	UFUNCTION(BlueprintCallable)
+	void setAppData(USIOJsonObject* appData);
+
 public:
 	// Callbacks
 	UPROPERTY(BlueprintAssignable)
