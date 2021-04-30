@@ -84,7 +84,7 @@ void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 		break;
 	}
 
-	if (!producerId.empty())
+	if (!producerId.empty() && vcComponent_->IsValidLowLevel())
 		vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
 			videocore::fromJsonObject({ { "id", producerId } }));
 
