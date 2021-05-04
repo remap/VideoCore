@@ -57,8 +57,10 @@ bool UVideoCoreMediaSender::Produce(FString contentHint, EMediaTrackKind trackKi
 	else
 	{
 		onMediaStreamReady_.AddLambda([this, contentHint, trackKind]() {
+			UE_LOG(LogTemp, Log, TEXT("Media stream is ready. Start producing"));
 			this->startStream(videocore::generateUUID(), trackKind, TCHAR_TO_ANSI(*contentHint));
 		});
+		UE_LOG(LogTemp, Log, TEXT("Media stream is not ready, produce request queued."));
 	}
 
 	return false;
@@ -84,7 +86,7 @@ void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 		break;
 	}
 
-	if (!producerId.empty() && vcComponent_->IsValidLowLevel())
+	if (!producerId.empty() && (vcComponent_->IsValidLowLevel() && !vcComponent_->IsBeingDestroyed()))
 		vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
 			videocore::fromJsonObject({ { "id", producerId } }));
 
@@ -135,7 +137,7 @@ void UVideoCoreMediaSender::setupRenderThreadCallback()
 	FCoreDelegates::OnEndFrameRT.AddUObject(this, &UVideoCoreMediaSender::tryCopyRenderTarget);
 }
 
-bool UVideoCoreMediaSender::startStream(string trackId, EMediaTrackKind trackKind, string hint)
+bool UVideoCoreMediaSender::startStream (string trackId, EMediaTrackKind trackKind, string hint)
 {
 	switch (trackKind) {
 	case EMediaTrackKind::Audio:
