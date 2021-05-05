@@ -58,6 +58,9 @@ public: // UE
 	UFUNCTION(BlueprintCallable)
 	EMediaTrackState getTrackState(EMediaTrackKind Kind) const;
 
+	UFUNCTION(BlueprintCallable)
+	FString getProducerId(EMediaTrackKind Kind) const;
+
 	UPROPERTY(BlueprintAssignable)
 	FVideoCorMediaSenderStartProducing OnStartProducing;
 
@@ -86,6 +89,12 @@ public: // UE
 	UPROPERTY(BlueprintReadWrite, EditDefaultsOnly, Category = "Broadcast Settings", META = (DisplayName = "Stream Bitrates (bps)", AllowPrivateAccess = true))
 	TArray<int> Bitrates;
 
+	UPROPERTY(BlueprintReadOnly)
+	FString VideoProducerId;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString AudioProducerId;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	FString VideoStreamHint;
 
@@ -104,7 +113,6 @@ protected: // UE
 	to allow the object to begin an asynchronous cleanup process.
 	*/
 	void BeginDestroy() override;
-
 
 
 private: // UE

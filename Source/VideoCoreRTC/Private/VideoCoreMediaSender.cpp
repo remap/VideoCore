@@ -86,10 +86,16 @@ void UVideoCoreMediaSender::Stop(EMediaTrackKind trackKind)
 		break;
 	}
 
-	if (!producerId.empty() && (vcComponent_->IsValidLowLevel() && !vcComponent_->IsBeingDestroyed()))
-		vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("closeProducer"),
-			videocore::fromJsonObject({ { "id", producerId } }));
+	USIOJsonValue* val = USIOJsonValue::ConstructJsonValue(this, 
+		videocore::fromJsonObject({ { "id", producerId } }));
 
+	if (!producerId.empty() &&
+		!vcComponent_->IsBeingDestroyed() &&
+		vcComponent_->getSocketIOClientComponent()->HasBeenInitialized())
+	{
+		vcComponent_->getSocketIOClientComponent()->Emit(TEXT("closeProducer"), val);
+	}
+	
 	stopStream(trackKind, "user initiated");
 }
 
@@ -109,6 +115,19 @@ EMediaTrackState UVideoCoreMediaSender::getTrackState(EMediaTrackKind Kind) cons
 	}
 
 	return EMediaTrackState::Unknown;
+}
+
+FString UVideoCoreMediaSender::getProducerId(EMediaTrackKind Kind) const
+{
+	if (hasTrackOfType(Kind))
+	{
+		if (Kind == EMediaTrackKind::Video && videoProducer_)
+			return videoProducer_->GetId().c_str();
+		if (Kind == EMediaTrackKind::Audio && audioProducer_)
+			return audioProducer_->GetId().c_str();
+	}
+
+	return FString();
 }
 
 void UVideoCoreMediaSender::BeginDestroy()
@@ -213,9 +232,19 @@ void UVideoCoreMediaSender::stopStream(EMediaTrackKind trackKind, string reason)
 
 			videoTrack_.release();
 
+			// TODO: close server-side producer
 			if (videoProducer_)
 			{
-				videoProducer_->Close();
+				try {
+
+					videoProducer_->Close();
+				}
+				catch (std::exception& e)
+				{
+					UE_LOG(LogTemp, Log, TEXT("Failure when closing video producer: %s"), 
+						ANSI_TO_TCHAR(e.what()));
+				}
+
 				delete videoProducer_;
 				videoProducer_ = nullptr;
 			}
@@ -377,7 +406,7 @@ void UVideoCoreMediaSender::createProducer(string hint)
 			//p.max_bitrate_bps = 500000;
 			p.min_bitrate_bps = 500000;
 			encodings.push_back(p);
-			Bitrates.Add(p.max_bitrate_bps.value());
+			Bitrates.Add(p.min_bitrate_bps.value());
 		}
 
 		vcComponent_->invokeOnTransportProduce(videoTrack_->id(), 
@@ -438,6 +467,7 @@ void UVideoCoreMediaSender::createProducer(string hint)
 				videoTrackState_ = EMediaTrackState::Live;
 				videoSource_->SetState(webrtc::MediaSourceInterface::SourceState::kLive);
 				videoTrack_->set_enabled(true);
+				this->VideoProducerId = FString(videoProducer_->GetId().c_str());
 
 				UE_LOG(LogTemp, Log, TEXT("Producing video now"));
 			}
@@ -481,7 +511,6 @@ void UVideoCoreMediaSender::checkAutoProduce()
 	{
 		UE_LOG(LogTemp, Log, TEXT("Auto-produce is ON: setup streams"));
 
-		// TODO: introduce stream hints (ids) as properties and use them here
 		if (videoTrackState_ < EMediaTrackState::Initializing) Produce(VideoStreamHint, EMediaTrackKind::Video);
 		if (audioTrackState_ < EMediaTrackState::Initializing) Produce(AudioStreamHint, EMediaTrackKind::Audio);
 	}
