@@ -368,7 +368,7 @@ UVideoCoreMediaReceiver::setupConsumerTrack(mediasoupclient::Consumer* consumer)
 		//sinkWants.target_pixel_count
 		((webrtc::VideoTrackInterface*)consumer->GetTrack())->AddOrUpdateSink(this, sinkWants);
 
-		videoProducerId = FString(consumer->GetId().c_str());
+		videoProducerId = FString(consumer->GetProducerId().c_str());
 	}
 	else
 	{
@@ -377,7 +377,7 @@ UVideoCoreMediaReceiver::setupConsumerTrack(mediasoupclient::Consumer* consumer)
 		if (!videocore::getIsUsingDefaultAdm())
 			((webrtc::AudioTrackInterface*)consumer->GetTrack())->AddSink(this);
 
-		audioProducerId = FString(consumer->GetId().c_str());
+		audioProducerId = FString(consumer->GetProducerId().c_str());
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("added %s track %s (consumer %s)"),
