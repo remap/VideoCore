@@ -390,7 +390,7 @@ UVideoCoreMediaReceiver::setupConsumerTrack(mediasoupclient::Consumer* consumer)
 	if (s == webrtc::MediaStreamTrackInterface::kLive)
 	{
 		consumer->GetTrack()->set_enabled(true);
-		OnStreamingStarted.Broadcast(consumer->GetId().c_str(),
+		OnStreamingStarted.Broadcast(consumer->GetProducerId().c_str(),
 			consumer->GetKind() == "video" ? EMediaTrackKind::Video : EMediaTrackKind::Audio);
 	}
 }
