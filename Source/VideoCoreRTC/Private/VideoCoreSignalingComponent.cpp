@@ -161,6 +161,11 @@ void UVideoCoreSignalingComponent::sendUnicastMessage(FString toClientId, USIOJs
 	});
 }
 
+void UVideoCoreSignalingComponent::sendBroadcastMessage(USIOJsonObject* Message)
+{
+	sIOClientComponent_->EmitNative(TEXT("appBroadcast"), Message->GetRootObject());
+}
+
 void UVideoCoreSignalingComponent::setAppData(USIOJsonObject* appData)
 {
 	USIOJsonObject* info = USIOJsonObject::ConstructJsonObject(this);
