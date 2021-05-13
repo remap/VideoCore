@@ -450,7 +450,7 @@ void UVideoCoreMediaSender::createProducer(string hint)
 
 		// invoke on non-game thread because this will trigger callback 
 		// with request to the server, shouldn't block game thread waiting for the reply
-		FCULambdaRunnable::RunLambdaOnBackGroundThread([this, encodings]() {
+		videocore::dispatchOnUtilityThread([this, encodings]() {
 			UE_LOG(LogTemp, Log, TEXT("Creating video producer"));
 			
 			string reason = "";

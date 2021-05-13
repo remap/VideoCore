@@ -15,6 +15,8 @@
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "SIOJConvert.h"
+#define ASIO_STANDALONE
+#include "asio/io_service.hpp"
 
 // change this to true to use WebrRTC's default audio device module
 static bool useDefaultAudioDeviceModule = true; 
@@ -25,6 +27,10 @@ static bool useDefaultAudioDeviceModule = true;
 static std::unique_ptr<rtc::Thread> networkThread;
 static std::unique_ptr<rtc::Thread> signalingThread;
 static std::unique_ptr<rtc::Thread> workerThread;
+
+static std::unique_ptr<std::thread> rtcUtilityThread;
+static asio::io_service rtcIoService;
+static std::shared_ptr<asio::io_service::work> rtcIoWork;
 
 static rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> factory;
 
@@ -46,6 +52,15 @@ void videocore::initialize()
 {
 	mediasoupclient::Initialize();
 	FString msVer(mediasoupclient::Version().c_str());
+
+	static std::once_flag f;
+	std::call_once(f,[]()
+	{
+		rtcIoWork = std::make_shared<asio::io_service::work>(rtcIoService);
+		rtcUtilityThread.reset(new std::thread([](){
+			rtcIoService.run();
+		}));
+	});
 
 	UE_LOG(LogTemp, Log, TEXT("Initialized mediasoupclient module, version %s"), *msVer);
 }
@@ -142,6 +157,12 @@ std::string videocore::generateUUID()
 	FGuid guid = FGuid::NewGuid();
 
 	return TCHAR_TO_ANSI(*guid.ToString());
+}
+
+
+void videocore::dispatchOnUtilityThread(std::function<void()> task)
+{
+	rtcIoService.dispatch(task);
 }
 
 // ****

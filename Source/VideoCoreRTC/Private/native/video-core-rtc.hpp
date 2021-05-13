@@ -41,4 +41,5 @@ namespace videocore
 		std::function<void(std::string reason)> errCb = {});
 
 	std::string generateUUID();
+	void dispatchOnUtilityThread(std::function<void()> task);
 }
