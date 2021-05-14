@@ -104,12 +104,22 @@ TMap<FString, FString> UVideoCoreFunctionLibrary::GetCommandLineArgs()
 {
     TMap<FString, FString> args;
 
-    FString fileName;
-    
-    if (FParse::Value(FCommandLine::Get(), TEXT("videoCoreGame="), fileName)) {
-        fileName = fileName.Replace(TEXT("="), TEXT("")).Replace(TEXT("\""), TEXT("")); // replace quotes
-        args.Add(FString("videoCoreGame"), fileName);
+    {
+        FString fileName;
+
+        if (FParse::Value(FCommandLine::Get(), TEXT("videoCoreGame="), fileName)) {
+            fileName = fileName.Replace(TEXT("="), TEXT("")).Replace(TEXT("\""), TEXT("")); // replace quotes
+            args.Add(FString("videoCoreGame"), fileName);
+        }
     }
+    {
+        FString instanceTag;
+        if (FParse::Value(FCommandLine::Get(), TEXT("videoCoreInstanceTag="), instanceTag)) {
+            instanceTag = instanceTag.Replace(TEXT("="), TEXT("")).Replace(TEXT("\""), TEXT("")); // replace quotes
+            args.Add(FString("videoCoreInstanceTag"), instanceTag);
+        }
+    }
+    
 
     return args;
 }
