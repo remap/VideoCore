@@ -2,12 +2,17 @@
 
 
 #include "VideoCorePlane.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // Sets default values
-AVideoCorePlane::AVideoCorePlane()
+AVideoCorePlane::AVideoCorePlane(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+	//Super(ObjectInitializer.SetDefaultSubobjectClass<UPlaneMovementComponent>(ADefaultPawn::MovementComponentName))
 {
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	planeMovementComponent_ = Cast<UPlaneMovementComponent>(this->MovementComponent);
 
 }
 
@@ -34,4 +39,17 @@ void AVideoCorePlane::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void AVideoCorePlane::OnDeserializationCompleted_Implementation()
 {
+}
+
+UPawnMovementComponent* AVideoCorePlane::GetMovementComponent() const
+{
+	if (!planeMovementComponent_)
+		return FindComponentByClass<UPlaneMovementComponent>();
+
+	return planeMovementComponent_;
+}
+
+void AVideoCorePlane::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
 }

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/DefaultPawn.h"
+#include "PlaneMovementComponent.h"
 #include "VideoCorePlane.generated.h"
 
 UCLASS()
@@ -13,7 +14,10 @@ class VIDEOCORE_API AVideoCorePlane : public ADefaultPawn
 
 public:
 	// Sets default values for this pawn's properties
-	AVideoCorePlane();
+	AVideoCorePlane(const FObjectInitializer& ObjectInitializer);
+
+	UFUNCTION(BlueprintCallable)
+	UPlaneMovementComponent* GetPlaneMovementComponent() const { return planeMovementComponent_; }
 
 protected:
 	// Called when the game starts or when spawned
@@ -36,4 +40,10 @@ public:
 	void OnDeserializationCompleted();
 
 	virtual void OnDeserializationCompleted_Implementation();
+
+	virtual UPawnMovementComponent* GetMovementComponent() const;
+	virtual void PostInitializeComponents() override;
+
+private:
+	UPlaneMovementComponent* planeMovementComponent_;
 };
