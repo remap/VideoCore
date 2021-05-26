@@ -170,9 +170,13 @@ private: // UE
 
 	FVideoCoreMediaReceiverTransportReady onTransportReady_;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual bool IsReadyForFinishDestroy() override;
+
 private: // native
 	mediasoupclient::RecvTransport* recvTransport_;
 	mediasoupclient::SendTransport* sendTransport_;
+	std::atomic<int> nTransportsActiveFlag_;
 	std::map<std::string, OnTransportProduce> transportProduceCb_;
 	std::vector<std::function<void()>> recvTransportConnectCb_;
 

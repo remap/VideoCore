@@ -46,10 +46,11 @@ void UVideoCoreSignalingComponent::BeginPlay()
 	Super::BeginPlay();
 }
 
-
 void UVideoCoreSignalingComponent::BeginDestroy()
 {
-	shutdown();
+
+	//shutdown();
+	mediasoupclient::Cleanup();
 	// Call the base implementation of 'BeginDestroy'
 	Super::BeginDestroy();
 }
@@ -143,7 +144,20 @@ void UVideoCoreSignalingComponent::disconnect()
 
 		clientRoster.Empty();
 		sIOClientComponent_->SyncDisconnect();
+		shutdown();
 	}
+}
+
+bool UVideoCoreSignalingComponent::IsReadyForFinishDestroy()
+{
+	return nTransportsActiveFlag_.load() == 0;
+}
+
+void UVideoCoreSignalingComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UE_LOG(LogTemp, Log, TEXT("EndPlay() called"));
+	disconnect();
+	Super::EndPlay(EndPlayReason);
 }
 
 void UVideoCoreSignalingComponent::sendUnicastMessage(FString toClientId, USIOJsonObject* Message, FVideoCoreRtcAppUnicastCallback OnStatusCallback)
@@ -441,7 +455,8 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 	if (t)
 	{
 		// schedule cleanup on game thread
-		FCULambdaRunnable::RunShortLambdaOnGameThread([this, t]() {
+		videocore::dispatchOnUtilityThread([this, t]() {
+		//FCULambdaRunnable::RunShortLambdaOnGameThread([this, t]() {
 			if (!t->IsClosed())
 			{
 				UE_LOG(LogTemp, Log, TEXT("Closing transport %s"), ANSI_TO_TCHAR(t->GetId().c_str()));
@@ -464,10 +479,19 @@ void UVideoCoreSignalingComponent::cleanupTransport(T*& t)
 
 void UVideoCoreSignalingComponent::shutdown()
 {
+
 	if (recvTransport_)
+	{
+		if (!recvTransport_->IsClosed())
+			nTransportsActiveFlag_++;
 		cleanupTransport<mediasoupclient::RecvTransport>(recvTransport_);
+	}
 	if (sendTransport_)
+	{
+		if (!sendTransport_->IsClosed())
+			nTransportsActiveFlag_++;
 		cleanupTransport<mediasoupclient::SendTransport>(sendTransport_);
+	}
 }
 
 std::future<void>
@@ -525,6 +549,9 @@ UVideoCoreSignalingComponent::OnConnectionStateChange(mediasoupclient::Transport
 			for (auto cb : recvTransportConnectCb_) cb();
 		});
 		//sIOClientComponent_->EmitNative(TEXT("resume"), nullptr, [](auto response) {});
+
+	if (connectionState == "closed")
+		nTransportsActiveFlag_--;
 }
 
 std::future<std::string> 
