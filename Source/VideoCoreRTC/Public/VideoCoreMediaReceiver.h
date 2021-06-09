@@ -14,9 +14,7 @@
 #include "Components/AudioComponent.h"
 #include "VideoCoreRtcTypes.h"
 
-#pragma warning(disable:4596)
-#pragma warning(disable:4800)
-#include "mediasoupclient.hpp"
+#include "native/video-core-rtc.hpp"
 
 #include "VideoCoreMediaReceiver.generated.h"
 
@@ -31,6 +29,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FVideoCoreMediaReceiverClientStateCh
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverStreamingStarted, FString, ProducerId, EMediaTrackKind, Kind);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FVideoCoreMediaReceiverStreamingStopped, FString, ProducerId, EMediaTrackKind, Kind, FString, Reason);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverDataConsumerOpen, FString, DataConsumerId, FString, DataProducerId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverDataConsumerClosed, FString, DataConsumerId, FString, DataProducerId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FVideoCoreMediaReceiverDataConsumerReceivedMessage, FString, DataConsumerId, USIOJsonObject*, Msg);
 /**
  * Media source used for rendering incoming WebRTC media track. Can render one video and one audio track only.
  */
@@ -50,6 +51,9 @@ public: // UE
 
 	UFUNCTION(BlueprintCallable)
 	void Consume(FString clientId);
+
+	UFUNCTION(BlueprintCallable)
+	void ConsumeData(FString dataProducerId);
 
 	UFUNCTION(BlueprintCallable)
 	void Stop();
@@ -75,18 +79,6 @@ public: // UE
 	UFUNCTION(BlueprintCallable)
 	FVideoCoreMediaStreamStatistics getStats() const;
 
-	UPROPERTY(BlueprintAssignable)
-	FVideoCorMediaReceiverSoundSourceReady OnSoundSourceReady;
-
-	UPROPERTY(BlueprintAssignable)
-	FVideoCoreMediaReceiverClientStateChanged OnClientStateChanged;
-
-	UPROPERTY(BlueprintAssignable)
-	FVideoCoreMediaReceiverStreamingStarted OnStreamingStarted;
-
-	UPROPERTY(BlueprintAssignable)
-	FVideoCoreMediaReceiverStreamingStopped OnStreamingStopped;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	bool AutoConsume;
 
@@ -105,6 +97,28 @@ public: // UE
 
 	UFUNCTION(BlueprintCallable)
 	FString GetAudioProducerId() const;
+
+	// Blueprint Events -- Callbacks
+	UPROPERTY(BlueprintAssignable)
+	FVideoCorMediaReceiverSoundSourceReady OnSoundSourceReady;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverClientStateChanged OnClientStateChanged;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverStreamingStarted OnStreamingStarted;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverStreamingStopped OnStreamingStopped;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverDataConsumerOpen OnDataChannelOpened;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverDataConsumerClosed OnDataChannelClosed;
+
+	UPROPERTY(BlueprintAssignable)
+	FVideoCoreMediaReceiverDataConsumerReceivedMessage OnDataChannelReceivedMessage;
 
 public: // native
 	int32 GeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamples);
@@ -143,6 +157,7 @@ private: // native
 
 	void setupRenderThreadCallback();
 	void setupSocketCallbacks();
+	void setupDataConsumerListenerCallbacks();
 	void createStream();
 	void consume(mediasoupclient::RecvTransport* t, const std::string& streamId);
 
@@ -159,6 +174,8 @@ private: // native
 	// rtc objects
 	mediasoupclient::Consumer* videoConsumer_;
 	mediasoupclient::Consumer* audioConsumer_;
+	mediasoupclient::DataConsumer* dataConsumer_;
+	videocore::DataConsumerListener dataConsumerListener_;
 
 	rtc::scoped_refptr<webrtc::MediaStreamInterface> stream_;
 

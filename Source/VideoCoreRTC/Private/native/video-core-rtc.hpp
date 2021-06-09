@@ -42,4 +42,45 @@ namespace videocore
 
 	std::string generateUUID();
 	void dispatchOnUtilityThread(std::function<void()> task);
+
+	class DataConsumerListener : public mediasoupclient::DataConsumer::Listener {
+	public:
+		typedef std::function<void(mediasoupclient::DataConsumer*)> OnConnectionEvent;
+		typedef std::function<void(mediasoupclient::DataConsumer*, const webrtc::DataBuffer&)> OnDataEvent;
+
+		OnConnectionEvent onConnecting_, onOpen_, onClosing_, onClose_, onTransportClose_;
+		OnDataEvent onMessageReceived_;
+
+	private:
+		// mediasoupclient::DataConsumer::Listener interface
+		void OnConnecting(mediasoupclient::DataConsumer* consumer) override
+		{
+			if (onConnecting_) onConnecting_(consumer);
+		}
+
+		void OnOpen(mediasoupclient::DataConsumer* consumer) override
+		{
+			if (onOpen_) onOpen_(consumer);
+		}
+
+		void OnClosing(mediasoupclient::DataConsumer* consumer) override
+		{
+			if (onClosing_) onClosing_(consumer);
+		}
+
+		void OnClose(mediasoupclient::DataConsumer* consumer) override
+		{
+			if (onClose_) onClose_(consumer);
+		}
+
+		void OnMessage(mediasoupclient::DataConsumer* consumer, const webrtc::DataBuffer& buffer) override
+		{
+			if (onMessageReceived_) onMessageReceived_(consumer, buffer);
+		}
+
+		void OnTransportClose(mediasoupclient::DataConsumer* consumer) override
+		{
+			if (onTransportClose_) onTransportClose_(consumer);
+		}
+	};
 }

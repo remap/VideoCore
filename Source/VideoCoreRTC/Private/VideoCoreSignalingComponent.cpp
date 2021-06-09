@@ -276,6 +276,7 @@ void UVideoCoreSignalingComponent::setupVideoCoreServerCallbacks()
 		getClientRecord(clientId).nProducers += 1;
 
 		UE_LOG(LogTemp, Log, TEXT("client %s created new producer %s (%s %s)"), *clientId, *producerId, *kind, *hint);
+		OnNewProducer.Broadcast(clientId, producerId, kind, hint);
 		onNewProducer_.Broadcast(clientId, producerId, kind, hint);
 	});
 
@@ -394,7 +395,8 @@ void UVideoCoreSignalingComponent::setupConsumerTransport(mediasoupclient::Devic
 				consumerData["id"].get<std::string>(),
 				consumerData["iceParameters"],
 				consumerData["iceCandidates"],
-				consumerData["dtlsParameters"]);
+				consumerData["dtlsParameters"],
+				consumerData["sctpParameters"]);
 
 			if (recvTransport_)
 			{

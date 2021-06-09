@@ -115,6 +115,42 @@ void UVideoCoreMediaReceiver::Consume(FString clientId)
 	});
 }
 
+void UVideoCoreMediaReceiver::ConsumeData(FString dataProducerId)
+{
+	setupDataConsumerListenerCallbacks();
+	auto obj = USIOJConvert::MakeJsonObject();
+	obj->SetStringField(TEXT("producerId"), dataProducerId);
+
+	vcComponent_->getSocketIOClientComponent()->EmitNative(TEXT("consumeData"), obj, [this](auto response) {
+		auto m = response[0]->AsObject();
+		if (!m->HasField(TEXT("error")))
+		{
+			nlohmann::json reply = videocore::fromFJsonObject(m);
+
+			UE_LOG(LogTemp, Log, TEXT("consumeData reply %s -- %s"), *USIOJConvert::ToJsonString(response), 
+				ANSI_TO_TCHAR(reply.dump().c_str()));
+			
+			try {
+
+				vcComponent_->getRecvTransport()->ConsumeData(&dataConsumerListener_,
+					reply["id"].get<string>(),
+					reply["dataProducerId"].get<string>(),
+					reply["label"].get<string>(),
+					reply["protocol"].get<string>());
+			}
+			catch (std::exception& e)
+			{
+				UE_LOG(LogTemp, Error, TEXT("failed to create data consumer: %s"), 
+					ANSI_TO_TCHAR(e.what()));
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("can't create data consumer due to an error: %s"), *m->GetStringField(TEXT("error")));
+		}
+	});
+}
+
 void UVideoCoreMediaReceiver::Stop()
 {
 	shutdown();
@@ -289,6 +325,37 @@ void UVideoCoreMediaReceiver::setupSocketCallbacks()
 		}
 	});
 	callbackHandles_.Add(hndl);
+}
+
+void UVideoCoreMediaReceiver::setupDataConsumerListenerCallbacks()
+{
+	dataConsumerListener_.onConnecting_ = [](mediasoupclient::DataConsumer* c) {
+		UE_LOG(LogTemp, Log, TEXT("DataConsumer connecting..."));
+	};
+	dataConsumerListener_.onOpen_ = [](mediasoupclient::DataConsumer* c) {
+		UE_LOG(LogTemp, Log, TEXT("DataConsumer open"));
+	};
+	dataConsumerListener_.onClosing_ = [](mediasoupclient::DataConsumer* c) {
+		UE_LOG(LogTemp, Log, TEXT("DataConsumer closing..."));
+	};
+	dataConsumerListener_.onClose_ = [](mediasoupclient::DataConsumer* c) {
+		UE_LOG(LogTemp, Log, TEXT("DataConsumer closed"));
+	};
+	dataConsumerListener_.onTransportClose_ = [](mediasoupclient::DataConsumer* c) {
+		UE_LOG(LogTemp, Log, TEXT("DataConsumer transport closed"));
+	};
+	dataConsumerListener_.onMessageReceived_ = [this](mediasoupclient::DataConsumer* c, const webrtc::DataBuffer& buffer) {
+		UE_LOG(LogTemp, Log, TEXT("received message on data channel: %s"), ANSI_TO_TCHAR((char*)buffer.data.cdata()));
+
+		auto v = USIOJConvert::JsonStringToJsonValue(FString(buffer.size(), (char*)buffer.data.cdata()));
+		string cId(c->GetId());
+
+		AsyncTask(ENamedThreads::GameThread, [this, cId, v]() {
+			USIOJsonObject* jObj = USIOJsonObject::ConstructJsonObject(this);
+			jObj->SetRootObject(v->AsObject());
+			OnDataChannelReceivedMessage.Broadcast(FString(cId.c_str()), jObj);
+		});
+	};
 }
 
 void UVideoCoreMediaReceiver::createStream()
