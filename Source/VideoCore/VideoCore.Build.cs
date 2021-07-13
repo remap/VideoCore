@@ -34,7 +34,9 @@ public class VideoCore : ModuleRules
 				"Core",
 				"UMG",
 				"DDBase",
-				"DDLog"
+				"DDLog",
+				"MediaAssets",
+				"Composure"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -47,7 +49,8 @@ public class VideoCore : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				"ApplicationCore"
+				"ApplicationCore",
+				"UMG"
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

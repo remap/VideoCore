@@ -123,3 +123,66 @@ TMap<FString, FString> UVideoCoreFunctionLibrary::GetCommandLineArgs()
 
     return args;
 }
+
+FLinearColor UVideoCoreFunctionLibrary::getImagePixelValue(UImage* imgWidget, float u, float v)
+{
+    UObject* texResource = imgWidget->Brush.GetResourceObject();
+
+    UTexture* tex = Cast<UTexture>(texResource);
+    if (tex)
+    {
+        auto pd = tex->GetRunningPlatformData();
+        //FColor *imageData = static_cast<FColor*>()
+    }
+
+    return FLinearColor();
+}
+
+void UVideoCoreFunctionLibrary::setCompMaterialParamScalar(FCompositingMaterial mat, FName paramName, float paramValue)
+{
+    UMaterialInstanceDynamic* matInstance = mat.GetMID();
+
+    if (matInstance)
+    {
+        matInstance->SetScalarParameterValue(paramName, paramValue);
+    }
+}
+
+void UVideoCoreFunctionLibrary::setCompMaterialParamVector(FCompositingMaterial mat, FName paramName, FLinearColor color)
+{
+    mat.SetVectorOverride(paramName, color);
+}
+
+void UVideoCoreFunctionLibrary::setCompMaterialParamTexture(FCompositingMaterial mat, FName paramName, UTexture* texture)
+{
+    mat.SetMaterialParam(paramName, texture);
+}
+
+float UVideoCoreFunctionLibrary::getCompMaterialParamScalar(FCompositingMaterial mat, FName paramName)
+{
+    float p = 0;
+
+    FHashedMaterialParameterInfo i;
+    if (mat.GetMID())
+     mat.GetMID()->GetScalarParameterValue(FHashedMaterialParameterInfo(paramName), p);
+    return p;
+}
+
+float UVideoCoreFunctionLibrary::getCompMaterialParamScalarDefault(FCompositingMaterial mat, FName paramName)
+{
+    float p = 0;
+    if (mat.GetMID())
+     mat.GetMID()->GetScalarParameterDefaultValue(FHashedMaterialParameterInfo(paramName), p);
+    return p;
+}
+
+FLinearColor UVideoCoreFunctionLibrary::getCompMaterialParamVector(FCompositingMaterial mat, FName paramName)
+{
+    FLinearColor c;
+    if (mat.GetVectorOverride(paramName, c))
+        return c;
+
+    if (mat.GetMID())
+      mat.GetMID()->GetLinearColorParameterValue(FHashedMaterialParameterInfo(paramName), c);
+    return c;
+}

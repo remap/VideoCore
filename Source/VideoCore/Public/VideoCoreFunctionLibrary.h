@@ -4,7 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-
+#include "Components/Image.h"
+#include "CompositingElement.h"
 #include "VideoCoreFunctionLibrary.generated.h"
 
 USTRUCT(Blueprintable)
@@ -94,4 +95,24 @@ public:
     UFUNCTION(BlueprintCallable)
     static TMap<FString, FString> GetCommandLineArgs();
 	
+    UFUNCTION(BlueprintCallable)
+    static FLinearColor getImagePixelValue(UImage* imgWidget, float u, float v);
+
+    UFUNCTION(BlueprintCallable)
+    static void setCompMaterialParamScalar(FCompositingMaterial mat, FName paramName, float paramValue);
+
+    UFUNCTION(BlueprintCallable)
+    static void setCompMaterialParamVector(FCompositingMaterial mat, FName paramName, FLinearColor color);
+
+    UFUNCTION(BlueprintCallable)
+    static void setCompMaterialParamTexture(FCompositingMaterial mat, FName paramName, UTexture* texture);
+
+    UFUNCTION(BlueprintCallable)
+    static float getCompMaterialParamScalar(FCompositingMaterial mat, FName paramName);
+
+    UFUNCTION(BlueprintCallable)
+    static float getCompMaterialParamScalarDefault(FCompositingMaterial mat, FName paramName);
+
+    UFUNCTION(BlueprintCallable)
+    static FLinearColor getCompMaterialParamVector(FCompositingMaterial mat, FName paramName);
 };
