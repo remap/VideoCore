@@ -60,6 +60,31 @@ enum class EVideoCorePlaneOrientation : uint8 {
     UpsideDown UMETA(DisplayName="Upside Down")
 };
 
+USTRUCT(Blueprintable)
+struct FChromaKeyParameters {
+
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadWrite)
+    TArray<FLinearColor> chromaKeyColors;
+    UPROPERTY(BlueprintReadWrite)
+    TArray<FLinearColor> despillKeyColors;
+    UPROPERTY(BlueprintReadWrite)
+    TMap<FName, float> chromaKeyMaterialParameters;
+    UPROPERTY(BlueprintReadWrite)
+    TMap<FName, float> despillMaterialParameters;
+
+    friend FArchive& operator<<(FArchive& ar, FChromaKeyParameters& rec)
+    {
+        ar << rec.chromaKeyColors;
+        ar << rec.despillKeyColors;
+        ar << rec.chromaKeyMaterialParameters;
+        ar << rec.despillMaterialParameters;
+
+        return ar;
+    }
+};
+
 class AVideoCorePlane;
 
 /**
@@ -87,6 +112,9 @@ public:
     static void ClipboardCopy(const FString& str);
 
     UFUNCTION(BlueprintCallable)
+    static void ClipboardPaste(FString& str);
+
+    UFUNCTION(BlueprintCallable)
     static TArray<FPlaneRecord> SerializePlanes(const TArray<AVideoCorePlane*>& planes);
 
     UFUNCTION(BlueprintCallable)
@@ -98,6 +126,7 @@ public:
     UFUNCTION(BlueprintCallable)
     static FLinearColor getImagePixelValue(UImage* imgWidget, float u, float v);
 
+    /* composite material helpers */
     UFUNCTION(BlueprintCallable)
     static void setCompMaterialParamScalar(FCompositingMaterial mat, FName paramName, float paramValue);
 
@@ -115,4 +144,11 @@ public:
 
     UFUNCTION(BlueprintCallable)
     static FLinearColor getCompMaterialParamVector(FCompositingMaterial mat, FName paramName);
+
+    /* chromakey parameters helpers */
+    UFUNCTION(BlueprintCallable)
+    static FString serializeChromaKeyParameters(FChromaKeyParameters params);
+
+    UFUNCTION(BlueprintCallable)
+    static bool deserializeChromaKeyParameters(const FString& s, FChromaKeyParameters& params);
 };

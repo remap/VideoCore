@@ -7,6 +7,7 @@
 #include "Serialization/MemoryReader.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 #include "HAL/PlatformApplicationMisc.h"
+#include "Misc/Base64.h"
 #include "VideoCorePlane.h"
 
 struct FPlaneProxyArchive : public FObjectAndNameAsStringProxyArchive
@@ -63,6 +64,11 @@ FString UVideoCoreFunctionLibrary::ByteArrayToString(const TArray<uint8>& barr)
 void UVideoCoreFunctionLibrary::ClipboardCopy(const FString& str)
 {
     FPlatformApplicationMisc::ClipboardCopy(*str);
+}
+
+void UVideoCoreFunctionLibrary::ClipboardPaste(FString& str)
+{
+    FPlatformApplicationMisc::ClipboardPaste(str);
 }
 
 TArray<FPlaneRecord> UVideoCoreFunctionLibrary::SerializePlanes(const TArray<AVideoCorePlane*>& planes)
@@ -185,4 +191,29 @@ FLinearColor UVideoCoreFunctionLibrary::getCompMaterialParamVector(FCompositingM
     if (mat.GetMID())
       mat.GetMID()->GetLinearColorParameterValue(FHashedMaterialParameterInfo(paramName), c);
     return c;
+}
+
+FString UVideoCoreFunctionLibrary::serializeChromaKeyParameters(FChromaKeyParameters params)
+{
+    TArray<uint8> arr;
+    FMemoryWriter memWriter(arr);
+    FPlaneProxyArchive planeArchive(memWriter);
+    
+    planeArchive << params;
+    return FBase64::Encode(arr);
+}
+
+bool UVideoCoreFunctionLibrary::deserializeChromaKeyParameters(const FString& s, FChromaKeyParameters& params)
+{
+    TArray<uint8> arr;
+    if (FBase64::Decode(s, arr) && arr.Num() > 1)
+    {
+        FMemoryReader memReader(arr);
+        FPlaneProxyArchive ar(memReader);
+
+        ar << params;
+        return !ar.IsError();
+    }
+
+    return false;
 }
